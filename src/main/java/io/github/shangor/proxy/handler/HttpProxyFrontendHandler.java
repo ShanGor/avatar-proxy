@@ -47,15 +47,17 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             // 增加引用计数，防止SimpleChannelInboundHandler自动释放
             request.retain();
 
-            log.info("收到请求: {}, {}", request.uri(), request.protocolVersion());
+            log.info("Got request: {}, {}", request.uri(), request.protocolVersion());
 
             // 处理CONNECT方法（HTTPS代理）
             if (HttpMethod.CONNECT.equals(request.method())) {
+                log.info("HTTPS proxy request {}", request.uri());
                 handleConnectRequest(ctx, request);
                 return;
             }
 
             // 处理普通HTTP请求
+            log.info("HTTP proxy request: {}", request.uri());
             URI uri = parseUri(request.uri(), 80);
             String host = uri.getHost();
             int port = uri.getPort();
@@ -85,20 +87,20 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             String host = uri.getHost();
             int port = uri.getPort();
 
-            log.info("处理CONNECT请求: {}:{}", host, port);
+            log.debug("Handling CONNECT request: {}:{}", host, port);
 
             // 检查是否需要通过接力代理
             RelayProxyConfig relayConfig = config.getRelayForDomain(host);
 
             if (relayConfig != null) {
-                log.info("使用接力代理 {}:{} 访问 {}:{}", relayConfig.getHost(), relayConfig.getPort(), host, port);
+                log.debug("Relay proxy {}:{} accessing {}:{}", relayConfig.getHost(), relayConfig.getPort(), host, port);
                 connectToRelayForHttps(ctx, request, relayConfig, host, port);
             } else {
-                log.info("直接连接到目标服务器 {}:{}", host, port);
+                log.debug("Direct connect to target server {}:{}", host, port);
                 connectToTargetForHttps(ctx, request, host, port);
             }
         } catch (URISyntaxException e) {
-            log.error("无效的CONNECT请求: {}", request.uri());
+            log.error("Invalid CONNECT Request: {}", request.uri());
             sendError(ctx, HttpResponseStatus.BAD_REQUEST);
             request.release();
         }
