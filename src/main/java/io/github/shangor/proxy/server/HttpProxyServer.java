@@ -6,7 +6,8 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,8 +24,9 @@ public class HttpProxyServer {
     }
 
     public void start() throws Exception {
-        bossGroup = new NioEventLoopGroup(1);
-        workerGroup = new NioEventLoopGroup();
+        var factory = NioIoHandler.newFactory();
+        bossGroup = new MultiThreadIoEventLoopGroup(1, factory);
+        workerGroup = new MultiThreadIoEventLoopGroup(factory);
 
         try {
             ServerBootstrap b = new ServerBootstrap();
