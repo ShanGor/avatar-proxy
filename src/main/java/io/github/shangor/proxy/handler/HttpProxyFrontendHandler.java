@@ -66,10 +66,10 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             RelayProxyConfig relayConfig = config.getRelayForDomain(host);
 
             if (relayConfig != null) {
-                log.info("relay proxy {}:{} accessing {}", relayConfig.host(), relayConfig.port(), host);
+                log.debug("relay proxy {}:{} accessing {}", relayConfig.host(), relayConfig.port(), host);
                 connectToRelay(ctx, request, relayConfig, host, port);
             } else {
-                log.info("direct proxy to {}:{}", host, port);
+                log.debug("direct proxy to {}:{}", host, port);
                 connectToTarget(ctx, request, host, port);
             }
         } catch (URISyntaxException e) {
@@ -93,10 +93,10 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             RelayProxyConfig relayConfig = config.getRelayForDomain(host);
 
             if (relayConfig != null) {
-                log.info("Relay proxy {}:{} accessing {}:{}", relayConfig.host(), relayConfig.port(), host, port);
+                log.debug("Relay proxy {}:{} accessing {}:{}", relayConfig.host(), relayConfig.port(), host, port);
                 connectToRelayForHttps(ctx, request, relayConfig, host, port);
             } else {
-                log.info("Direct connect to target server {}:{}", host, port);
+                log.debug("Direct connect to target server {}:{}", host, port);
                 connectToTargetForHttps(ctx, request, host, port);
             }
         } catch (URISyntaxException e) {
