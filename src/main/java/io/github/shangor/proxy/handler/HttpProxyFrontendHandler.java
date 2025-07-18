@@ -66,7 +66,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             RelayProxyConfig relayConfig = config.getRelayForDomain(host);
 
             if (relayConfig != null) {
-                log.info("relay proxy {}:{} accessing {}", relayConfig.getHost(), relayConfig.getPort(), host);
+                log.info("relay proxy {}:{} accessing {}", relayConfig.host(), relayConfig.port(), host);
                 connectToRelay(ctx, request, relayConfig, host, port);
             } else {
                 log.info("direct proxy to {}:{}", host, port);
@@ -93,7 +93,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             RelayProxyConfig relayConfig = config.getRelayForDomain(host);
 
             if (relayConfig != null) {
-                log.debug("Relay proxy {}:{} accessing {}:{}", relayConfig.getHost(), relayConfig.getPort(), host, port);
+                log.debug("Relay proxy {}:{} accessing {}:{}", relayConfig.host(), relayConfig.port(), host, port);
                 connectToRelayForHttps(ctx, request, relayConfig, host, port);
             } else {
                 log.debug("Direct connect to target server {}:{}", host, port);
@@ -169,7 +169,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             });
 
         // 连接到接力代理
-        ChannelFuture f = b.connect(relayConfig.getHost(), relayConfig.getPort());
+        ChannelFuture f = b.connect(relayConfig.host(), relayConfig.port());
         outboundChannel = f.channel();
 
         f.addListener((ChannelFutureListener) future -> {
@@ -215,7 +215,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 });
             } else {
                 // 连接失败
-                log.error("连接到接力代理失败: {}:{}", relayConfig.getHost(), relayConfig.getPort(), future.cause());
+                log.error("连接到接力代理失败: {}:{}", relayConfig.host(), relayConfig.port(), future.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
             }
 
@@ -277,7 +277,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 }
             });
 
-        ChannelFuture f = b.connect(relayConfig.getHost(), relayConfig.getPort());
+        ChannelFuture f = b.connect(relayConfig.host(), relayConfig.port());
         outboundChannel = f.channel();
 
         f.addListener((ChannelFutureListener) future -> {
@@ -289,7 +289,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 outboundChannel.writeAndFlush(request);
             } else {
                 // 连接失败
-                log.error("连接到接力代理失败: {}:{}", relayConfig.getHost(), relayConfig.getPort(), future.cause());
+                log.error("连接到接力代理失败: {}:{}", relayConfig.host(), relayConfig.port(), future.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
                 // 释放请求对象
                 request.release();

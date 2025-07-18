@@ -4,8 +4,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ProxyConfig {
-    private int port = 8080;
+    private int port;
     private Map<String, RelayProxyConfig> domainRelayMap = new HashMap<>();
+
+    public ProxyConfig() {
+        this.port = Integer.parseInt(System.getProperty("avatarProxy.port", "3128"));
+    }
 
     public int getPort() {
         return port;
@@ -31,21 +35,6 @@ public class ProxyConfig {
         return domainRelayMap.get(domain);
     }
 
-    public static class RelayProxyConfig {
-        private String host;
-        private int port;
-
-        public RelayProxyConfig(String host, int port) {
-            this.host = host;
-            this.port = port;
-        }
-
-        public String getHost() {
-            return host;
-        }
-
-        public int getPort() {
-            return port;
-        }
+    public record RelayProxyConfig(String host, int port) {
     }
 }
