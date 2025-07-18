@@ -13,10 +13,10 @@ public class App {
             // Create proxy config, default port is 3128
             ProxyConfig config = new ProxyConfig();
 
-            // 添加接力代理配置，例如对于example.com域名使用192.168.1.100:8888作为接力代理
+            // Add relay proxy configuration, for example use 192.168.1.100:8888 as relay proxy for example.com domain
              config.addDomainRelay("google.com", "127.0.0.1", 4780);
 
-            // 启动代理服务器
+            // Start proxy server
             HttpProxyServer server = new HttpProxyServer(config);
             server.start();
         } catch (Exception e) {

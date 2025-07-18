@@ -36,13 +36,13 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
     <dependencies>
-        <!-- Netty依赖 -->
+        <!-- Netty dependency -->
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
             <version>4.2.3.Final</version>
         </dependency>
-        <!-- 日志依赖 -->
+        <!-- Logging dependency -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -53,7 +53,7 @@
             <artifactId>logback-classic</artifactId>
             <version>1.5.18</version>
         </dependency>
-        <!-- 测试依赖 -->
+        <!-- Testing dependency -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

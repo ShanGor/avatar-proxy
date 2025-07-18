@@ -44,25 +44,25 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
         try {
-            // 增加引用计数，防止SimpleChannelInboundHandler自动释放
+            // Increase reference count to prevent SimpleChannelInboundHandler from auto-releasing
             request.retain();
 
             log.info("Got request: {}, {}", request.uri(), request.protocolVersion());
 
-            // 处理CONNECT方法（HTTPS代理）
+            // Handle CONNECT method (HTTPS proxy)
             if (HttpMethod.CONNECT.equals(request.method())) {
                 log.info("HTTPS proxy request {}", request.uri());
                 handleConnectRequest(ctx, request);
                 return;
             }
 
-            // 处理普通HTTP请求
+            // Handle normal HTTP request
             log.info("HTTP proxy request: {}", request.uri());
             URI uri = parseUri(request.uri(), 80);
             String host = uri.getHost();
             int port = uri.getPort();
 
-            // 检查是否需要通过接力代理
+            // Check if relay proxy is needed
             RelayProxyConfig relayConfig = config.getRelayForDomain(host);
 
             if (relayConfig != null) {
@@ -75,7 +75,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
         } catch (URISyntaxException e) {
             log.error("URI parse error", e);
             sendError(ctx, HttpResponseStatus.BAD_REQUEST);
-            // 发生异常时释放引用计数
+            // Release reference count when exception occurs
             request.release();
         }
     }
@@ -89,7 +89,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
             log.debug("Handling CONNECT request: {}:{}", host, port);
 
-            // 检查是否需要通过接力代理
+            // Check if relay proxy is needed
             RelayProxyConfig relayConfig = config.getRelayForDomain(host);
 
             if (relayConfig != null) {
@@ -115,7 +115,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             .handler(new ChannelInitializer<SocketChannel>() {
                 @Override
                 protected void initChannel(SocketChannel ch) {
-                    // 对于HTTPS，我们不需要HTTP编解码器，直接传输原始数据
+                    // For HTTPS, we don't need HTTP codec, directly transmit raw data
                     ch.pipeline().addLast(new RelayHandler(ctx.channel()));
                 }
             });
@@ -125,11 +125,11 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
         f.addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
-                // 连接成功，发送200 Connection Established
+                // Connection successful, send 200 Connection Established
                 FullHttpResponse response = new DefaultFullHttpResponse(
                     HttpVersion.HTTP_1_1, new HttpResponseStatus(200, "Connection Established"));
 
-                // 发送响应后，移除HTTP编解码器，切换到直接传输模式
+                // After sending response, remove HTTP codec and switch to direct transmission mode
                 ctx.writeAndFlush(response).addListener((ChannelFutureListener) channelFuture -> {
                     if (channelFuture.isSuccess()) {
                         ChannelPipeline pipeline = ctx.pipeline();
@@ -142,19 +142,19 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                     }
                 });
             } else {
-                // 连接失败
-                log.error("连接到目标服务器失败: {}:{}", host, port, future.cause());
+                // Connection failed
+                log.error("Failed to connect to target server: {}:{}", host, port, future.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
             }
 
-            // 释放请求对象
+            // Release request object
             request.release();
         });
     }
 
     private void connectToRelayForHttps(ChannelHandlerContext ctx, FullHttpRequest request,
                                        RelayProxyConfig relayConfig, String targetHost, int targetPort) {
-        // 实现类似connectToTargetForHttps的逻辑，但连接到接力代理
+        // Implement similar logic to connectToTargetForHttps, but connect to relay proxy
         Bootstrap b = new Bootstrap();
         b.group(ctx.channel().eventLoop())
             .channel(NioSocketChannel.class)
@@ -163,7 +163,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             .handler(new ChannelInitializer<SocketChannel>() {
                 @Override
                 protected void initChannel(SocketChannel ch) {
-                    // 对于连接到接力代理，我们需要HTTP编解码器来发送CONNECT请求
+                    // For connecting to relay proxy, we need HTTP codec to send CONNECT request
                     ch.pipeline().addLast(
                         new HttpClientCodec(),
                         new HttpObjectAggregator(65536)
@@ -171,44 +171,44 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 }
             });
 
-        // 连接到接力代理
+        // Connect to relay proxy
         ChannelFuture f = b.connect(relayConfig.host(), relayConfig.port());
         outboundChannel = f.channel();
 
         f.addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
-                // 连接成功，发送CONNECT请求到接力代理
+                // Connection successful, send CONNECT request to relay proxy
                 HttpRequest connectRequest = new DefaultFullHttpRequest(
                     HttpVersion.HTTP_1_1, HttpMethod.CONNECT, targetHost + ":" + targetPort);
                 connectRequest.headers().set(HttpHeaderNames.HOST, targetHost + ":" + targetPort);
 
-                // 发送CONNECT请求到接力代理
+                // Send CONNECT request to relay proxy
                 outboundChannel.writeAndFlush(connectRequest).addListener((ChannelFutureListener) proxyFuture -> {
                     if (proxyFuture.isSuccess()) {
-                        // 发送成功，等待接力代理的响应
-                        // 添加处理接力代理响应的处理器
+                        // Send successful, wait for relay proxy response
+                        // Add handler for relay proxy response
                         outboundChannel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
                             @Override
                             public void channelRead(ChannelHandlerContext relayCtx, Object msg) {
                                 if (msg instanceof FullHttpResponse) {
                                     FullHttpResponse proxyResponse = (FullHttpResponse) msg;
 
-                                    // 检查接力代理的响应状态
+                                    // Check relay proxy response status
                                     if (proxyResponse.status().code() == 200) {
-                                        // 接力代理连接成功，发送200 Connection Established给客户端
+                                        // Relay proxy connection successful, send 200 Connection Established to client
                                         FullHttpResponse response = new DefaultFullHttpResponse(
                                             HttpVersion.HTTP_1_1, new HttpResponseStatus(200, "Connection Established"));
 
                                         ctx.writeAndFlush(response).addListener((ChannelFutureListener) clientFuture -> {
                                             if (clientFuture.isSuccess()) {
-                                                // 移除HTTP编解码器，切换到直接传输模式
+                                                // Remove HTTP codec, switch to direct transmission mode
                                                 ChannelPipeline pipeline = ctx.pipeline();
                                                 pipeline.remove(HttpServerCodec.class);
                                                 pipeline.remove(HttpObjectAggregator.class);
                                                 pipeline.remove(HttpProxyFrontendHandler.class);
                                                 pipeline.addLast(new RelayHandler(outboundChannel));
 
-                                                // 同样修改接力代理连接的管道
+                                                // Also modify relay proxy connection pipeline
                                                 ChannelPipeline outboundPipeline = outboundChannel.pipeline();
                                                 outboundPipeline.remove(HttpClientCodec.class);
                                                 outboundPipeline.remove(HttpObjectAggregator.class);
@@ -219,14 +219,14 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                                             }
                                         });
                                     } else {
-                                        // 接力代理连接失败
-                                        log.error("接力代理响应错误: {}", proxyResponse.status());
+                                        // Relay proxy connection failed
+                                        log.error("Relay proxy response error: {}", proxyResponse.status());
                                         sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
                                         closeOnFlush(outboundChannel);
                                     }
                                 } else {
-                                    // 意外的消息类型
-                                    log.error("接力代理返回意外的消息类型: {}", msg.getClass().getName());
+                                    // Unexpected message type
+                                    log.error("Relay proxy returned unexpected message type: {}", msg.getClass().getName());
                                     sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
                                     closeOnFlush(outboundChannel);
                                 }
@@ -234,24 +234,24 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
                             @Override
                             public void exceptionCaught(ChannelHandlerContext relayCtx, Throwable cause) {
-                                log.error("处理接力代理响应时发生异常", cause);
+                                log.error("Exception occurred while processing relay proxy response", cause);
                                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
                                 closeOnFlush(outboundChannel);
                             }
                         });
                     } else {
-                        log.error("向接力代理发送CONNECT请求失败", proxyFuture.cause());
+                        log.error("Failed to send CONNECT request to relay proxy", proxyFuture.cause());
                         sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
                         closeOnFlush(outboundChannel);
                     }
                 });
             } else {
-                // 连接失败
-                log.error("连接到接力代理失败: {}:{}", relayConfig.host(), relayConfig.port(), future.cause());
+                // Connection failed
+                log.error("Failed to connect to relay proxy: {}:{}", relayConfig.host(), relayConfig.port(), future.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
             }
 
-            // 释放请求对象
+            // Release request object
             request.release();
         });
     }
@@ -278,14 +278,14 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
         f.addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
-                // 连接成功，发送请求
-                // 不需要再次retain，因为在channelRead0中已经调用过
+                // Connection successful, send request
+                // No need to retain again, as it was already called in channelRead0
                 outboundChannel.writeAndFlush(request);
             } else {
-                // 连接失败
-                log.error("连接到目标服务器失败: {}:{}", host, port, future.cause());
+                // Connection failed
+                log.error("Failed to connect to target server: {}:{}", host, port, future.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
-                // 释放请求对象
+                // Release request object
                 request.release();
             }
         });
@@ -314,16 +314,16 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
         f.addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
-                // 连接成功，发送请求到接力代理
-                // 修改请求头，添加接力代理信息
+                // Connection successful, send request to relay proxy
+                // Modify request headers, add relay proxy information
                 request.headers().set(HttpHeaderNames.HOST, targetHost + ":" + targetPort);
-                // 不需要再次retain，因为在channelRead0中已经调用过
+                // No need to retain again, as it was already called in channelRead0
                 outboundChannel.writeAndFlush(request);
             } else {
-                // 连接失败
-                log.error("连接到接力代理失败: {}:{}", relayConfig.host(), relayConfig.port(), future.cause());
+                // Connection failed
+                log.error("Failed to connect to relay proxy: {}:{}", relayConfig.host(), relayConfig.port(), future.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
-                // 释放请求对象
+                // Release request object
                 request.release();
             }
         });
@@ -341,7 +341,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        log.error("前端处理器异常", cause);
+        log.error("Frontend handler exception", cause);
         closeOnFlush(ctx.channel());
     }
 

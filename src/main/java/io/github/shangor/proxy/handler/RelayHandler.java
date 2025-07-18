@@ -24,7 +24,7 @@ public class RelayHandler extends ChannelInboundHandlerAdapter {
         if (relayChannel.isActive()) {
             relayChannel.writeAndFlush(msg).addListener((ChannelFutureListener) future -> {
                 if (!future.isSuccess()) {
-                    log.error("转发数据失败", future.cause());
+                    log.error("Failed to forward data", future.cause());
                     ctx.channel().close();
                 }
             });
@@ -42,7 +42,7 @@ public class RelayHandler extends ChannelInboundHandlerAdapter {
     
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        log.error("RelayHandler异常", cause);
+        log.error("RelayHandler exception", cause);
         ctx.close();
     }
 }

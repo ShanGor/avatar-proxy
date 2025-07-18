@@ -19,7 +19,7 @@ public class HttpProxyBackendHandler extends SimpleChannelInboundHandler<FullHtt
         response.retain();
         inboundChannel.writeAndFlush(response).addListener((ChannelFutureListener) future -> {
             if (!future.isSuccess()) {
-                logger.error("向客户端发送响应失败", future.cause());
+                logger.error("Failed to send response to client", future.cause());
                 HttpProxyFrontendHandler.closeOnFlush(ctx.channel());
             }
         });
@@ -27,7 +27,7 @@ public class HttpProxyBackendHandler extends SimpleChannelInboundHandler<FullHtt
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        logger.error("后端处理器异常", cause);
+        logger.error("Backend handler exception", cause);
         HttpProxyFrontendHandler.closeOnFlush(ctx.channel());
     }
 
