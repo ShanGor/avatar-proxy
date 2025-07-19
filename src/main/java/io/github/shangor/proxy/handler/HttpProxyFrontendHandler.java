@@ -141,7 +141,8 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 });
             } else {
                 // Connection failed
-                log.error("Failed to connect to target server: {}:{}", host, port, future.cause());
+                log.error("Failed to connect to target server: {}:{}, {}", host, port, future.cause().getMessage());
+                log.debug("Error details", future.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
             }
 
@@ -262,7 +263,8 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 outboundChannel.writeAndFlush(request);
             } else {
                 // Connection failed
-                log.error("Failed to connect to target server: {}:{}", host, port, future.cause());
+                log.error("Failed to connect to target server: {}:{} : {}", host, port, future.cause().getMessage());
+                log.debug("Error details", future.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
                 // Release request object
                 request.release();
@@ -284,7 +286,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 // Connection successful, send request to relay proxy
                 // Modify request headers, add relay proxy information
                 request.headers().set(HttpHeaderNames.HOST, targetHost + ":" + targetPort);
-                
+
                 // Add Basic Auth if configured
                 if (relayConfig.hasAuth()) {
                     String authString = relayConfig.username() + ":" + relayConfig.password();
@@ -292,7 +294,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                     request.headers().set(HttpHeaderNames.PROXY_AUTHORIZATION, "Basic " + encodedAuth);
                     log.debug("Added Basic Auth for relay proxy");
                 }
-                
+
                 // No need to retain again, as it was already called in channelRead0
                 outboundChannel.writeAndFlush(request);
             } else {
@@ -332,7 +334,11 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        log.error("Frontend handler exception", cause);
+        log.error("Frontend handler exception: {}", cause.getMessage());
+        if (!"Connection reset".equals(cause.getMessage())) {
+            log.debug("Exception details", cause);
+        }
+
         closeOnFlush(ctx.channel());
     }
 
