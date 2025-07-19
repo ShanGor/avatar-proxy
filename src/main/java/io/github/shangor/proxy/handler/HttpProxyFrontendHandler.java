@@ -41,6 +41,12 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
         }
     }
 
+    /**
+     * Handle an HTTP and HTTPs request
+     * @param ctx           the {@link ChannelHandlerContext} which this {@link SimpleChannelInboundHandler}
+     *                      belongs to
+     * @param request           the message to handle
+     */
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
         try {
@@ -80,6 +86,9 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
         }
     }
 
+    /**
+     * Handle CONNECT method (HTTPS proxy)
+     */
     private void handleConnectRequest(ChannelHandlerContext ctx, FullHttpRequest request) {
         try {
             URI uri = parseUri(request.uri(), 443);
