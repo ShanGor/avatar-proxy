@@ -13,8 +13,11 @@ public class App {
             // Create proxy config, default port is 3128
             ProxyConfig config = new ProxyConfig();
 
-            // Add relay proxy configuration, for example use 192.168.1.100:8888 as relay proxy for example.com domain
-             config.addDomainRelay("google.com", "127.0.0.1", 4780);
+            // Add relay proxy configuration without auth
+            config.addDomainRelay("youtube.com", "127.0.0.1", 4780);
+
+            // Add relay proxy configuration with Basic Auth
+            config.addDomainRelay("google.com", "127.0.0.1", 4780, "username", "password");
 
             // Start proxy server
             HttpProxyServer server = new HttpProxyServer(config);

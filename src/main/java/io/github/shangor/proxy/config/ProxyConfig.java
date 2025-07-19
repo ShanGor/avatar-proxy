@@ -35,13 +35,20 @@ public class ProxyConfig {
     }
 
     public void addDomainRelay(String domain, String relayHost, int relayPort) {
-        domainRelayMap.put(domain, new RelayProxyConfig(relayHost, relayPort));
+        domainRelayMap.put(domain, new RelayProxyConfig(relayHost, relayPort, null, null));
+    }
+    
+    public void addDomainRelay(String domain, String relayHost, int relayPort, String username, String password) {
+        domainRelayMap.put(domain, new RelayProxyConfig(relayHost, relayPort, username, password));
     }
 
     public RelayProxyConfig getRelayForDomain(String domain) {
         return domainRelayMap.get(domain);
     }
 
-    public record RelayProxyConfig(String host, int port) {
+    public record RelayProxyConfig(String host, int port, String username, String password) {
+        public boolean hasAuth() {
+            return username != null && !username.isEmpty() && password != null;
+        }
     }
 }

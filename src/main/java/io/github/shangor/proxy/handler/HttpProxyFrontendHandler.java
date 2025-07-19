@@ -167,6 +167,14 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                     HttpVersion.HTTP_1_1, HttpMethod.CONNECT, targetHost + ":" + targetPort);
                 connectRequest.headers().set(HttpHeaderNames.HOST, targetHost + ":" + targetPort);
 
+                // Add Basic Auth if configured
+                if (relayConfig.hasAuth()) {
+                    String authString = relayConfig.username() + ":" + relayConfig.password();
+                    String encodedAuth = java.util.Base64.getEncoder().encodeToString(authString.getBytes());
+                    connectRequest.headers().set(HttpHeaderNames.PROXY_AUTHORIZATION, "Basic " + encodedAuth);
+                    log.debug("Added Basic Auth for relay proxy HTTPS connection");
+                }
+
                 // Send CONNECT request to relay proxy
                 outboundChannel.writeAndFlush(connectRequest).addListener((ChannelFutureListener) proxyFuture -> {
                     if (proxyFuture.isSuccess()) {
@@ -276,6 +284,15 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 // Connection successful, send request to relay proxy
                 // Modify request headers, add relay proxy information
                 request.headers().set(HttpHeaderNames.HOST, targetHost + ":" + targetPort);
+                
+                // Add Basic Auth if configured
+                if (relayConfig.hasAuth()) {
+                    String authString = relayConfig.username() + ":" + relayConfig.password();
+                    String encodedAuth = java.util.Base64.getEncoder().encodeToString(authString.getBytes());
+                    request.headers().set(HttpHeaderNames.PROXY_AUTHORIZATION, "Basic " + encodedAuth);
+                    log.debug("Added Basic Auth for relay proxy");
+                }
+                
                 // No need to retain again, as it was already called in channelRead0
                 outboundChannel.writeAndFlush(request);
             } else {
