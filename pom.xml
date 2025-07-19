@@ -6,7 +6,7 @@
 
     <groupId>io.github.shangor</groupId>
     <artifactId>avatar-proxy</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <name>avatar-proxy</name>
     <description>A proxy implemented in Netty, easy to integrate into any project</description>
     <url>https://github.com/ShanGor/avatar-proxy</url>
