@@ -7,6 +7,9 @@ A proxy server implemented by Java, which can be used to proxy HTTP requests.
 - Support relay to other proxy servers (Currently only support HTTP)
 - Relay proxy server, support HTTP Basic Authentication
 
+## Requirements
+- Java 17+
+
 ## Usage Example
 ### Integrate it into your code like below
 ```java
