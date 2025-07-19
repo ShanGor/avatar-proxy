@@ -5,10 +5,17 @@ import java.util.Map;
 
 public class ProxyConfig {
     private int port;
+
+    private final int connectTimeoutMillis;
     private Map<String, RelayProxyConfig> domainRelayMap = new HashMap<>();
 
     public ProxyConfig() {
         this.port = Integer.parseInt(System.getProperty("avatarProxy.port", "3128"));
+        this.connectTimeoutMillis = Integer.parseInt(System.getProperty("avatarProxy.connectTimeoutMillis", "10000"));
+    }
+
+    public int getConnectTimeoutMillis() {
+        return connectTimeoutMillis;
     }
 
     public int getPort() {

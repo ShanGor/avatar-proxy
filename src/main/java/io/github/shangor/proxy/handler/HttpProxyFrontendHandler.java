@@ -107,18 +107,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     }
 
     private void connectToTargetForHttps(ChannelHandlerContext ctx, FullHttpRequest request, String host, int port) {
-        Bootstrap b = new Bootstrap();
-        b.group(ctx.channel().eventLoop())
-            .channel(NioSocketChannel.class)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .option(ChannelOption.SO_KEEPALIVE, true)
-            .handler(new ChannelInitializer<SocketChannel>() {
-                @Override
-                protected void initChannel(SocketChannel ch) {
-                    // For HTTPS, we don't need HTTP codec, directly transmit raw data
-                    ch.pipeline().addLast(new RelayHandler(ctx.channel()));
-                }
-            });
+        Bootstrap b = createBootstrap(ctx, new RelayHandler(ctx.channel()));
 
         ChannelFuture f = b.connect(host, port);
         outboundChannel = f.channel();
@@ -155,21 +144,8 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     private void connectToRelayForHttps(ChannelHandlerContext ctx, FullHttpRequest request,
                                        RelayProxyConfig relayConfig, String targetHost, int targetPort) {
         // Implement similar logic to connectToTargetForHttps, but connect to relay proxy
-        Bootstrap b = new Bootstrap();
-        b.group(ctx.channel().eventLoop())
-            .channel(NioSocketChannel.class)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .option(ChannelOption.SO_KEEPALIVE, true)
-            .handler(new ChannelInitializer<SocketChannel>() {
-                @Override
-                protected void initChannel(SocketChannel ch) {
-                    // For connecting to relay proxy, we need HTTP codec to send CONNECT request
-                    ch.pipeline().addLast(
-                        new HttpClientCodec(),
-                        new HttpObjectAggregator(65536)
-                    );
-                }
-            });
+        Bootstrap b = createBootstrap(ctx, new HttpClientCodec(),
+                new HttpObjectAggregator(65536));
 
         // Connect to relay proxy
         ChannelFuture f = b.connect(relayConfig.host(), relayConfig.port());
@@ -190,9 +166,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                         outboundChannel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
                             @Override
                             public void channelRead(ChannelHandlerContext relayCtx, Object msg) {
-                                if (msg instanceof FullHttpResponse) {
-                                    FullHttpResponse proxyResponse = (FullHttpResponse) msg;
-
+                                if (msg instanceof FullHttpResponse proxyResponse) {
                                     // Check relay proxy response status
                                     if (proxyResponse.status().code() == 200) {
                                         // Relay proxy connection successful, send 200 Connection Established to client
@@ -257,21 +231,9 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     }
 
     private void connectToTarget(ChannelHandlerContext ctx, FullHttpRequest request, String host, int port) {
-        Bootstrap b = new Bootstrap();
-        b.group(ctx.channel().eventLoop())
-            .channel(NioSocketChannel.class)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .option(ChannelOption.SO_KEEPALIVE, true)
-            .handler(new ChannelInitializer<SocketChannel>() {
-                @Override
-                protected void initChannel(SocketChannel ch) {
-                    ch.pipeline().addLast(
-                        new HttpClientCodec(),
-                        new HttpObjectAggregator(65536),
-                        new HttpProxyBackendHandler(ctx.channel())
-                    );
-                }
-            });
+        Bootstrap b = createBootstrap(ctx, new HttpClientCodec(),
+                new HttpObjectAggregator(65536),
+                new HttpProxyBackendHandler(ctx.channel()));
 
         ChannelFuture f = b.connect(host, port);
         outboundChannel = f.channel();
@@ -293,21 +255,9 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
     private void connectToRelay(ChannelHandlerContext ctx, FullHttpRequest request,
                                RelayProxyConfig relayConfig, String targetHost, int targetPort) {
-        Bootstrap b = new Bootstrap();
-        b.group(ctx.channel().eventLoop())
-            .channel(NioSocketChannel.class)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .option(ChannelOption.SO_KEEPALIVE, true)
-            .handler(new ChannelInitializer<SocketChannel>() {
-                @Override
-                protected void initChannel(SocketChannel ch) {
-                    ch.pipeline().addLast(
-                        new HttpClientCodec(),
-                        new HttpObjectAggregator(65536),
-                        new HttpProxyBackendHandler(ctx.channel())
-                    );
-                }
-            });
+        Bootstrap b = createBootstrap(ctx, new HttpClientCodec(),
+                new HttpObjectAggregator(65536),
+                new HttpProxyBackendHandler(ctx.channel()));
 
         ChannelFuture f = b.connect(relayConfig.host(), relayConfig.port());
         outboundChannel = f.channel();
@@ -327,6 +277,21 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 request.release();
             }
         });
+    }
+
+    private Bootstrap createBootstrap(ChannelHandlerContext ctx, ChannelHandler ... handlers) {
+        Bootstrap b = new Bootstrap();
+        b.group(ctx.channel().eventLoop())
+                .channel(NioSocketChannel.class)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, config.getConnectTimeoutMillis())
+                .option(ChannelOption.SO_KEEPALIVE, true)
+                .handler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel ch) {
+                        ch.pipeline().addLast(handlers);
+                    }
+                });
+        return b;
     }
 
     private void sendError(ChannelHandlerContext ctx, HttpResponseStatus status) {
