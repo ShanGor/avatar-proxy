@@ -9,7 +9,7 @@
     <version>1.0.0</version>
     <name>avatar-proxy</name>
     <description>A proxy implemented in Netty, easy to integrate into any project</description>
-    <url/>
+    <url>https://github.com/ShanGor/avatar-proxy</url>
     <licenses>
         <license>
             <name>MIT License</name>
