@@ -49,12 +49,27 @@ class ProxyConfigTest {
     void testSetDomainRelayMap() {
         ProxyConfig config = new ProxyConfig();
         Map<String, ProxyConfig.RelayProxyConfig> relayMap = new HashMap<>();
-        relayMap.put("example.com", new ProxyConfig.RelayProxyConfig("127.0.0.1", 8080, null, null));
+        relayMap.put("example.com", new ProxyConfig.RelayProxyConfig("http", "127.0.0.1", 8080, null, null));
         config.setDomainRelayMap(relayMap);
         ProxyConfig.RelayProxyConfig relay = config.getRelayForDomain("example.com");
         assertEquals("127.0.0.1", relay.host());
         // Test the getDomainRelayMap()
         Map<String, ProxyConfig.RelayProxyConfig> domainRelayMap = config.getDomainRelayMap();
         assertEquals(relayMap, domainRelayMap);
+
+        config.addDomainRelay("domain.com", "127.0.0.2", 8080, "username", "password");
+        relay = config.getRelayForDomain("domain.com");
+        assertEquals("127.0.0.2", relay.host());
+        assertEquals("username", relay.username());
+        assertEquals("password", relay.password());
+    }
+
+    @Test
+    void testAddCredential() {
+        ProxyConfig config = new ProxyConfig();
+        config.addCredential("user1", "pass1");
+        assertTrue(config.getAuthConfig().authenticate("user1", "pass1"));
+        config.enableAuth(false);
+        assertFalse(config.getAuthConfig().isAuthEnabled());
     }
 }
