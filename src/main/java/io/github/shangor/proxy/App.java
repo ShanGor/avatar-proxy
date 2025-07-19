@@ -10,16 +10,8 @@ public class App {
 
     public static void main(String[] args) {
         try {
-            // Create proxy config, default port is 3128
             ProxyConfig config = new ProxyConfig();
 
-            // Add relay proxy configuration without auth
-            config.addDomainRelay("youtube.com", "127.0.0.1", 4780);
-
-            // Add relay proxy configuration with Basic Auth
-            config.addDomainRelay("google.com", "127.0.0.1", 4780, "username", "password");
-
-            // Start proxy server
             HttpProxyServer server = new HttpProxyServer(config);
             server.start();
         } catch (Exception e) {

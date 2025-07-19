@@ -18,8 +18,14 @@ public class HttpProxyInitializer extends ChannelInitializer<SocketChannel> {
     protected void initChannel(SocketChannel ch) {
         ch.pipeline().addLast(
             new HttpServerCodec(),
-            new HttpObjectAggregator(65536),
-            new HttpProxyFrontendHandler(config)
+            new HttpObjectAggregator(65536)
         );
+        
+        // 添加认证处理器（如果启用）
+        if (config.getAuthConfig().isAuthEnabled()) {
+            ch.pipeline().addLast(new BasicAuthHandler(config.getAuthConfig()));
+        }
+        
+        ch.pipeline().addLast(new HttpProxyFrontendHandler(config));
     }
 }
