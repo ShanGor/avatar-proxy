@@ -1,0 +1,1 @@
+java -server -DavatarProxy.port=3128 -DavatarProxy.connectTimeoutMillis=10000 -DavatarProxy.basicAuth="user1:pass1,user2:pass2" -DavatarProxy.relay="google.com->127.0.0.1:4780,youtube.com->http://user:pass@127.0.0.1:4780" -jar target\avatar-proxy-1.0.0-jar-with-dependencies.jar
