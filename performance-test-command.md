@@ -18,7 +18,7 @@ java -server -DavatarProxy.port=3128 -DavatarProxy.connectTimeoutMillis=10000 -D
 
 ### Run performance test:
 ```sh
-hey -m POST -T "text/plain" -d "hello world" -c 5 -n 10000 -q 10 -x http://localhost:3128  http://localhost:8080/test
+hey -m POST -T "text/plain" -d "hello world, what they fuk you are doing now? i have no idea ffmpeg -i input.mp4 -i output.mp3 -map 0:v -map 1:a -c:v copy -c:a aac output.mp4" -c 5 -n 100000 -q 1000 -x http://localhost:3128  http://localhost:8080/test
 ```
 
 ### Test result

@@ -50,7 +50,8 @@ public class BasicAuthHandler extends ChannelInboundHandlerAdapter {
 
                 // 验证凭证
                 if (authConfig.authenticate(username, password)) {
-                    log.debug("Authentication successful for user: {}", username);
+                    if (log.isDebugEnabled())
+                        log.debug("Authentication successful for user: {}", username);
                     ctx.fireChannelRead(msg);
                     return;
                 }

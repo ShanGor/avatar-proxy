@@ -1,6 +1,6 @@
 package io.github.shangor.proxy.config;
 
-import io.github.shangor.proxy.util.ConnectionPool;
+import io.github.shangor.proxy.pool.ConnectionPool;
 
 import java.util.HashMap;
 import java.util.Map;
