@@ -14,12 +14,17 @@ public class ProxyConfig {
 
     public static final Pattern PROXY_PATTERN = Pattern.compile("((?<scheme>(https?)|(socks5))://)?((?<user>[^:@]+):(?<pass>[^:@]+)@)?(?<host>[A-Za-z0-9._-]+):(?<port>[0-9]+)");
 
+    // 添加更多配置选项
+    private final int maxRequestSize;
+    private final int maxConcurrentRequests;
+    private final boolean enableMetrics;
+
     public ProxyConfig() {
         this.port = Integer.parseInt(System.getProperty("avatarProxy.port", "3128"));
         this.connectTimeoutMillis = Integer.parseInt(System.getProperty("avatarProxy.connectTimeoutMillis", "5000"));
         ConnectionPool.setConnectTimeoutMs(this.connectTimeoutMillis);
-        ConnectionPool.setMaxConnectionsPerHost(Integer.parseInt(System.getProperty("avatarProxy.maxConnectionsPerHost", "10")));
-        ConnectionPool.setIdleTimeoutSeconds(Integer.parseInt(System.getProperty("avatarProxy.idleTimeoutSeconds", "60")));
+        ConnectionPool.setMaxConnectionsPerHost(Integer.parseInt(System.getProperty("avatarProxy.maxConnectionsPerHost", "100")));
+        ConnectionPool.setIdleTimeoutSeconds(Integer.parseInt(System.getProperty("avatarProxy.idleTimeoutSeconds", "30")));
         var basicAuths = System.getProperty("avatarProxy.basicAuth", null);
         if (basicAuths != null) {
             for (var basicAuth : basicAuths.split(",")) {
@@ -48,6 +53,9 @@ public class ProxyConfig {
                 }
             }
         }
+        this.maxRequestSize = Integer.parseInt(System.getProperty("avatarProxy.maxRequestSize", "10485760")); // 10MB
+        this.maxConcurrentRequests = Integer.parseInt(System.getProperty("avatarProxy.maxConcurrentRequests", "1000"));
+        this.enableMetrics = Boolean.parseBoolean(System.getProperty("avatarProxy.enableMetrics", "true"));
     }
 
     public record RelayProxyConfig(String scheme, String host, int port, String username, String password) {

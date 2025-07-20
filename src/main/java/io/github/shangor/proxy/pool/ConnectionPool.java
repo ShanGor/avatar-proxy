@@ -26,18 +26,19 @@ public class ConnectionPool {
     private static final Map<String, AtomicInteger> activeConnections = new ConcurrentHashMap<>();
     private static final Map<String, AtomicInteger> totalConnections = new ConcurrentHashMap<>();
 
-    // 连接池配置
-    private static int MAX_CONNECTIONS_PER_HOST = 100; // 增加到200
-    private static int CONNECT_TIMEOUT_MS = 5000;
-    private static int IDLE_TIMEOUT_SECONDS = 60;
-    private static double POOL_EXHAUSTION_THRESHOLD = 0.9; // 90%使用率阈值
+    // 连接池配置 - 优化性能
+    private static int MAX_CONNECTIONS_PER_HOST = 100; // 增加连接数
+    private static int CONNECT_TIMEOUT_MS = 3000; // 减少连接超时
+    private static int IDLE_TIMEOUT_SECONDS = 30; // 减少空闲超时
+    private static double POOL_EXHAUSTION_THRESHOLD = 0.8; // 降低阈值，更早触发背压
 
     public static FixedChannelPool getPool(EventLoopGroup group, String host, int port, int connectTimeoutMs) {
-        String key = host + ":" + port;
+        // 将EventLoopGroup的hashCode也加入key，确保不同的EventLoopGroup使用不同的连接池
+        String key = host + ":" + port + ":" + System.identityHashCode(group);
         return pools.computeIfAbsent(key, k -> {
-            // 初始化计数器
-            activeConnections.putIfAbsent(key, new AtomicInteger(0));
-            totalConnections.putIfAbsent(key, new AtomicInteger(0));
+            // 初始化计数器时也要使用新的key
+            activeConnections.putIfAbsent(k, new AtomicInteger(0));
+            totalConnections.putIfAbsent(k, new AtomicInteger(0));
 
             Bootstrap bootstrap = new Bootstrap()
                     .group(group)
@@ -50,10 +51,10 @@ public class ConnectionPool {
             return new FixedChannelPool(bootstrap, new ChannelPoolHandler() {
                 @Override
                 public void channelCreated(Channel ch) {
-                    totalConnections.get(key).incrementAndGet();
+                    totalConnections.get(k).incrementAndGet();
                     if (log.isDebugEnabled())
                         log.debug("Created new connection to {}:{}, channel: {}, total: {}",
-                        host, port, ch.id(), totalConnections.get(key).get());
+                        host, port, ch.id(), totalConnections.get(k).get());
                     // 基础pipeline设置
                     ChannelPipeline pipeline = ch.pipeline();
                     pipeline.addLast("idle-handler", new IdleStateHandler(0, 0, IDLE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
@@ -63,18 +64,18 @@ public class ConnectionPool {
 
                 @Override
                 public void channelAcquired(Channel ch) {
-                    activeConnections.get(key).incrementAndGet();
+                    activeConnections.get(k).incrementAndGet();
                     if (log.isDebugEnabled())
                         log.debug("Acquired connection to {}:{}, channel: {}, active: {}/{}",
-                        host, port, ch.id(), activeConnections.get(key).get(), totalConnections.get(key).get());
+                        host, port, ch.id(), activeConnections.get(k).get(), totalConnections.get(k).get());
                 }
 
                 @Override
                 public void channelReleased(Channel ch) {
-                    activeConnections.get(key).decrementAndGet();
+                    activeConnections.get(k).decrementAndGet();
                     if (log.isDebugEnabled())
                         log.debug("Released connection to {}:{}, channel: {}, active: {}/{}",
-                        host, port, ch.id(), activeConnections.get(key).get(), totalConnections.get(key).get());
+                        host, port, ch.id(), activeConnections.get(k).get(), totalConnections.get(k).get());
                     // 清理可能添加的业务处理器，保留基础的HTTP处理器
                     ChannelPipeline pipeline = ch.pipeline();
 
@@ -105,13 +106,43 @@ public class ConnectionPool {
 
     // 检查连接池是否接近耗尽
     public static boolean isPoolExhausted(String host, int port) {
-        String key = host + ":" + port;
-        AtomicInteger active = activeConnections.get(key);
-        if (active == null) {
-            return false;
+        // 需要遍历所有匹配host:port的连接池
+        String prefix = host + ":" + port + ":";
+        return activeConnections.entrySet().stream()
+            .filter(entry -> entry.getKey().startsWith(prefix))
+            .anyMatch(entry -> {
+                double usage = (double) entry.getValue().get() / MAX_CONNECTIONS_PER_HOST;
+                return usage >= POOL_EXHAUSTION_THRESHOLD;
+            });
+    }
+
+    // 获取连接池统计信息
+    public static String getPoolStats(String host, int port) {
+        String prefix = host + ":" + port + ":";
+        int totalActive = 0;
+        int totalConns = 0;
+        int poolCount = 0;
+
+        for (Map.Entry<String, AtomicInteger> entry : activeConnections.entrySet()) {
+            if (entry.getKey().startsWith(prefix)) {
+                totalActive += entry.getValue().get();
+                poolCount++;
+            }
         }
-        double usage = (double) active.get() / MAX_CONNECTIONS_PER_HOST;
-        return usage >= POOL_EXHAUSTION_THRESHOLD;
+
+        for (Map.Entry<String, AtomicInteger> entry : totalConnections.entrySet()) {
+            if (entry.getKey().startsWith(prefix)) {
+                totalConns += entry.getValue().get();
+            }
+        }
+
+        if (poolCount == 0) {
+            return "Pool not found";
+        }
+
+        return String.format("Pools: %d, Active: %d, Total: %d, Max per pool: %d, Usage: %.1f%%",
+            poolCount, totalActive, totalConns, MAX_CONNECTIONS_PER_HOST,
+            (double) totalActive / (poolCount * MAX_CONNECTIONS_PER_HOST) * 100);
     }
 
     // 检查所有连接池是否有任何一个接近耗尽
@@ -123,29 +154,19 @@ public class ConnectionPool {
             });
     }
 
-    // 获取连接池统计信息
-    public static String getPoolStats(String host, int port) {
-        String key = host + ":" + port;
-        AtomicInteger active = activeConnections.get(key);
-        AtomicInteger total = totalConnections.get(key);
-        if (active == null || total == null) {
-            return "Pool not found";
-        }
-        return String.format("Active: %d, Total: %d, Max: %d, Usage: %.1f%%",
-            active.get(), total.get(), MAX_CONNECTIONS_PER_HOST,
-            (double) active.get() / MAX_CONNECTIONS_PER_HOST * 100);
-    }
-
     // 清理指定主机的连接池
     public static void closePool(String host, int port) {
-        String key = host + ":" + port;
-        FixedChannelPool pool = pools.remove(key);
-        if (pool != null) {
-            pool.close();
-            activeConnections.remove(key);
-            totalConnections.remove(key);
-            log.info("Closed connection pool for {}:{}", host, port);
-        }
+        String prefix = host + ":" + port + ":";
+        pools.entrySet().removeIf(entry -> {
+            if (entry.getKey().startsWith(prefix)) {
+                entry.getValue().close();
+                activeConnections.remove(entry.getKey());
+                totalConnections.remove(entry.getKey());
+                log.info("Closed connection pool for {}", entry.getKey());
+                return true;
+            }
+            return false;
+        });
     }
 
     // 清理所有连接池

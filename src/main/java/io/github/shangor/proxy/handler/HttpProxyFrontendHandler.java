@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import io.github.shangor.proxy.pool.ConnectionPool;
@@ -24,6 +25,10 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
     private final ProxyConfig config;
     private Channel outboundChannel;
+
+    // 添加请求计数和延迟监控
+    private static final AtomicLong requestCounter = new AtomicLong(0);
+    private static final AtomicLong errorCounter = new AtomicLong(0);
 
     public HttpProxyFrontendHandler(ProxyConfig config) {
         this.config = config;
@@ -53,58 +58,72 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
      */
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) {
+        long startTime = System.currentTimeMillis();
+        long requestId = requestCounter.incrementAndGet();
+
         try {
-            // Increase reference count to prevent SimpleChannelInboundHandler from auto-releasing
-            request.retain();
+            try {
+                // Increase reference count to prevent SimpleChannelInboundHandler from auto-releasing
+                request.retain();
 
-            log.info("Got request: {}, {}", request.uri(), request.protocolVersion());
+                log.info("Got request: {}, {}", request.uri(), request.protocolVersion());
 
-            // Handle CONNECT method (HTTPS proxy)
-            if (HttpMethod.CONNECT.equals(request.method())) {
-                log.info("HTTPS proxy request {}", request.uri());
-                handleConnectRequest(ctx, request);
-                return;
-            }
+                // Handle CONNECT method (HTTPS proxy)
+                if (HttpMethod.CONNECT.equals(request.method())) {
+                    log.info("HTTPS proxy request {}", request.uri());
+                    handleConnectRequest(ctx, request);
+                    return;
+                }
 
-            // Handle normal HTTP request
-            log.info("HTTP proxy request: {}", request.uri());
-            URI uri = parseUri(request.uri(), 80);
-            String host = uri.getHost();
-            int port = uri.getPort();
+                // Handle normal HTTP request
+                log.info("HTTP proxy request: {}", request.uri());
+                URI uri = parseUri(request.uri(), 80);
+                String host = uri.getHost();
+                int port = uri.getPort();
 
-            // 检查连接池可用性，实现背压控制
-            if (isConnectionPoolExhausted(host, port)) {
-                log.warn("Connection pool exhausted for {}:{}, rejecting request", host, port);
-                sendError(ctx, HttpResponseStatus.SERVICE_UNAVAILABLE);
-                request.release();
-                return;
-            }
-
-            // Check if relay proxy is needed
-            RelayProxyConfig relayConfig = config.getRelayForDomain(host);
-
-            if (relayConfig != null) {
-                // 也检查relay连接池
-                if (isConnectionPoolExhausted(relayConfig.host(), relayConfig.port())) {
-                    log.warn("Relay connection pool exhausted for {}:{}, rejecting request",
-                        relayConfig.host(), relayConfig.port());
+                // 检查连接池可用性，实现背压控制
+                if (isConnectionPoolExhausted(host, port)) {
+                    log.warn("Connection pool exhausted for {}:{}, rejecting request", host, port);
                     sendError(ctx, HttpResponseStatus.SERVICE_UNAVAILABLE);
                     request.release();
                     return;
                 }
-                if (log.isDebugEnabled())
-                    log.debug("relay proxy {}:{} accessing {}", relayConfig.host(), relayConfig.port(), host);
-                connectToRelay(ctx, request, relayConfig, host, port);
-            } else {
-                if (log.isDebugEnabled())
-                    log.debug("direct proxy to {}:{}", host, port);
-                connectToTarget(ctx, request, host, port);
+
+                // Check if relay proxy is needed
+                RelayProxyConfig relayConfig = config.getRelayForDomain(host);
+
+                if (relayConfig != null) {
+                    // 也检查relay连接池
+                    if (isConnectionPoolExhausted(relayConfig.host(), relayConfig.port())) {
+                        log.warn("Relay connection pool exhausted for {}:{}, rejecting request",
+                                relayConfig.host(), relayConfig.port());
+                        sendError(ctx, HttpResponseStatus.SERVICE_UNAVAILABLE);
+                        request.release();
+                        return;
+                    }
+                    if (log.isDebugEnabled())
+                        log.debug("relay proxy {}:{} accessing {}", relayConfig.host(), relayConfig.port(), host);
+                    connectToRelay(ctx, request, relayConfig, host, port);
+                } else {
+                    if (log.isDebugEnabled())
+                        log.debug("direct proxy to {}:{}", host, port);
+                    connectToTarget(ctx, request, host, port);
+                }
+            } catch (URISyntaxException e) {
+                log.error("URI parse error", e);
+                sendError(ctx, HttpResponseStatus.BAD_REQUEST);
+                // Release reference count when exception occurs
+                request.release();
             }
-        } catch (URISyntaxException e) {
-            log.error("URI parse error", e);
-            sendError(ctx, HttpResponseStatus.BAD_REQUEST);
-            // Release reference count when exception occurs
-            request.release();
+
+            // 在请求完成时记录延迟
+            long duration = System.currentTimeMillis() - startTime;
+            if (duration > 1000) { // 记录慢请求
+                log.warn("Slow request #{}: {} ms for {}", requestId, duration, request.uri());
+            }
+        } catch (Exception e) {
+            errorCounter.incrementAndGet();
+            throw e;
         }
     }
 
@@ -156,19 +175,16 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     }
 
     private void connectToTargetForHttps(ChannelHandlerContext ctx, FullHttpRequest request, String host, int port) {
-        // 对于HTTPS代理，如果不是CONNECT方法，也可以使用连接池
-        ChannelPool pool = ConnectionPool.getPool(ctx.channel().eventLoop(), host, port, config.getConnectTimeoutMillis());
+        // 使用固定的EventLoopGroup获取连接池，确保连接池实例一致
+        EventLoopGroup eventLoopGroup = ctx.channel().eventLoop().parent();
+        ChannelPool pool = ConnectionPool.getPool(eventLoopGroup, host, port, config.getConnectTimeoutMillis());
 
         Future<Channel> future = pool.acquire();
         future.addListener((Future<Channel> f) -> {
             if (f.isSuccess()) {
                 Channel outboundChannel = f.getNow();
                 this.outboundChannel = outboundChannel;
-
-                // 添加后端处理器
-                ChannelPipeline pipeline = outboundChannel.pipeline();
-                pipeline.addLast("backend-handler", new PooledHttpProxyBackendHandler(ctx.channel(), pool, outboundChannel));
-
+    
                 // 发送200 Connection Established响应
                 FullHttpResponse response = new DefaultFullHttpResponse(
                         HttpVersion.HTTP_1_1, new HttpResponseStatus(200, "Connection Established"));
@@ -180,17 +196,21 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                         clientPipeline.remove(HttpServerCodec.class);
                         clientPipeline.remove(HttpObjectAggregator.class);
                         clientPipeline.remove(HttpProxyFrontendHandler.class);
-                        clientPipeline.addLast(new RelayHandler(outboundChannel));
+                        clientPipeline.addLast(new PooledRelayHandler(outboundChannel, pool, outboundChannel));
 
-                        // 服务端也切换到透明模式，但保持连接池管理
+                        // 清理服务端pipeline - 使用正确的处理器名称
                         ChannelPipeline serverPipeline = outboundChannel.pipeline();
-                        // 移除HTTP处理器，但保留连接池处理器
-                        if (serverPipeline.get(HttpClientCodec.class) != null) {
-                            serverPipeline.remove(HttpClientCodec.class);
+                        // 移除ConnectionPool创建的HTTP处理器
+                        if (serverPipeline.get("idle-handler") != null) {
+                            serverPipeline.remove("idle-handler");
                         }
-                        if (serverPipeline.get(HttpObjectAggregator.class) != null) {
-                            serverPipeline.remove(HttpObjectAggregator.class);
+                        if (serverPipeline.get("http-codec") != null) {
+                            serverPipeline.remove("http-codec");
                         }
+                        if (serverPipeline.get("http-aggregator") != null) {
+                            serverPipeline.remove("http-aggregator");
+                        }
+                        // 添加反向RelayHandler
                         serverPipeline.addLast(new RelayHandler(ctx.channel()));
                     } else {
                         pool.release(outboundChannel);
@@ -208,11 +228,11 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
     private void connectToRelayForHttps(ChannelHandlerContext ctx, FullHttpRequest request,
                                        RelayProxyConfig relayConfig, String targetHost, int targetPort) {
-        ChannelPool pool = ConnectionPool.getPool(ctx.channel().eventLoop(), relayConfig.host(), relayConfig.port(), config.getConnectTimeoutMillis());
+        // 使用固定的EventLoopGroup获取连接池，确保连接池实例一致
+        EventLoopGroup eventLoopGroup = ctx.channel().eventLoop().parent();
+        ChannelPool pool = ConnectionPool.getPool(eventLoopGroup, relayConfig.host(), relayConfig.port(), config.getConnectTimeoutMillis());
 
         Future<Channel> f = pool.acquire();
-        // 移除这行错误的代码：outboundChannel = f.channel();
-
         f.addListener((Future<Channel> future) -> {
             if (future.isSuccess()) {
                 Channel outboundChannel = future.getNow();
@@ -246,13 +266,26 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                                     clientPipeline.remove(HttpServerCodec.class);
                                     clientPipeline.remove(HttpObjectAggregator.class);
                                     clientPipeline.remove(HttpProxyFrontendHandler.class);
-                                    clientPipeline.addLast(new RelayHandler(outboundChannel));
+                                    clientPipeline.addLast(new PooledRelayHandler(outboundChannel, pool, outboundChannel));
 
-                                    // Also switch the outbound channel to transparent mode
-                                    relayCtx.pipeline().remove(HttpClientCodec.class);
-                                    relayCtx.pipeline().remove(HttpObjectAggregator.class);
-                                    relayCtx.pipeline().remove(this);
-                                    relayCtx.pipeline().addLast(new RelayHandler(ctx.channel()));
+                                    // 清理outbound channel的pipeline
+                                    ChannelPipeline outboundPipeline = outboundChannel.pipeline();
+                                    // 移除我们刚添加的处理器
+                                    if (outboundPipeline.get("proxy-connect-handler") != null) {
+                                        outboundPipeline.remove("proxy-connect-handler");
+                                    }
+                                    // 移除ConnectionPool创建的HTTP处理器
+                                    if (outboundPipeline.get("idle-handler") != null) {
+                                        outboundPipeline.remove("idle-handler");
+                                    }
+                                    if (outboundPipeline.get("http-codec") != null) {
+                                        outboundPipeline.remove("http-codec");
+                                    }
+                                    if (outboundPipeline.get("http-aggregator") != null) {
+                                        outboundPipeline.remove("http-aggregator");
+                                    }
+                                    // 添加反向RelayHandler
+                                    outboundPipeline.addLast(new RelayHandler(ctx.channel()));
                                 } else {
                                     pool.release(outboundChannel);
                                     closeOnFlush(ctx.channel());
@@ -289,48 +322,57 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     }
 
     private void connectToTarget(ChannelHandlerContext ctx, FullHttpRequest request, String host, int port) {
-        ChannelPool pool = ConnectionPool.getPool(ctx.channel().eventLoop(), host, port, config.getConnectTimeoutMillis());
-
+        // 使用固定的EventLoopGroup获取连接池，确保连接池实例一致
+        EventLoopGroup eventLoopGroup = ctx.channel().eventLoop().parent();
+        ChannelPool pool = ConnectionPool.getPool(eventLoopGroup, host, port, config.getConnectTimeoutMillis());
+    
         Future<Channel> future = pool.acquire();
         future.addListener((Future<Channel> f) -> {
             if (f.isSuccess()) {
                 Channel outboundChannel = f.getNow();
                 this.outboundChannel = outboundChannel;
-
-                // 添加后端处理器
+    
+                // 添加后端处理器 - 确保传递正确的连接池实例
                 ChannelPipeline pipeline = outboundChannel.pipeline();
                 pipeline.addLast("backend-handler", new PooledHttpProxyBackendHandler(ctx.channel(), pool, outboundChannel));
-
+    
                 // 发送请求
                 outboundChannel.writeAndFlush(request).addListener((ChannelFutureListener) sendFuture -> {
                     if (!sendFuture.isSuccess()) {
                         log.error("Failed to send request to target server: {}:{}", host, port, sendFuture.cause());
                         pool.release(outboundChannel);
                         sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
-                        request.release();
+                        if (request.refCnt() > 0) {
+                            request.release();
+                        }
                     }
                 });
             } else {
                 log.error("Failed to acquire connection from pool for {}:{}", host, port, f.cause());
                 sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
-                request.release();
+                // 确保在所有失败路径都释放request
+                if (request.refCnt() > 0) {
+                    request.release();
+                }
             }
         });
     }
 
     private void connectToRelay(ChannelHandlerContext ctx, FullHttpRequest request,
                                RelayProxyConfig relayConfig, String targetHost, int targetPort) {
-        ChannelPool pool = ConnectionPool.getPool(ctx.channel().eventLoop(), relayConfig.host(), relayConfig.port(), config.getConnectTimeoutMillis());
-
+        // 使用固定的EventLoopGroup获取连接池，确保连接池实例一致
+        EventLoopGroup eventLoopGroup = ctx.channel().eventLoop().parent();
+        ChannelPool pool = ConnectionPool.getPool(eventLoopGroup, relayConfig.host(), relayConfig.port(), config.getConnectTimeoutMillis());
+    
         Future<Channel> future = pool.acquire();
         future.addListener((Future<Channel> f) -> {
             if (f.isSuccess()) {
                 Channel outboundChannel = f.getNow();
                 this.outboundChannel = outboundChannel;
-
+    
                 // 修改请求头
                 request.headers().set(HttpHeaderNames.HOST, targetHost + ":" + targetPort);
-
+    
                 // 添加Basic Auth if configured
                 if (relayConfig.hasAuth()) {
                     String authString = relayConfig.username() + ":" + relayConfig.password();
@@ -339,18 +381,20 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                     if (log.isDebugEnabled())
                         log.debug("Added Basic Auth for relay proxy");
                 }
-
-                // 添加后端处理器
+    
+                // 添加后端处理器 - 确保传递正确的连接池实例
                 ChannelPipeline pipeline = outboundChannel.pipeline();
                 pipeline.addLast("backend-handler", new PooledHttpProxyBackendHandler(ctx.channel(), pool, outboundChannel));
-
+    
                 // 发送请求
                 outboundChannel.writeAndFlush(request).addListener((ChannelFutureListener) sendFuture -> {
                     if (!sendFuture.isSuccess()) {
                         log.error("Failed to send request to relay proxy: {}:{}", relayConfig.host(), relayConfig.port(), sendFuture.cause());
                         pool.release(outboundChannel);
                         sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
-                        request.release();
+                        if (request.refCnt() > 0) {
+                            request.release();
+                        }
                     }
                 });
             } else {
@@ -362,7 +406,12 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     }
 
     private boolean isConnectionPoolExhausted(String host, int port) {
-        return ConnectionPool.isPoolExhausted(host, port);
+        boolean exhausted = ConnectionPool.isPoolExhausted(host, port);
+        if (exhausted) {
+            // 记录详细的池状态
+            log.warn("Pool exhausted for {}:{}, stats: {}", host, port, ConnectionPool.getPoolStats(host, port));
+        }
+        return exhausted;
     }
 
     private boolean isConnectionPoolExhausted() {
@@ -396,9 +445,21 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        log.error("Frontend handler exception: {}", cause.getMessage());
-        if (log.isDebugEnabled() && !"Connection reset".equals(cause.getMessage())) {
-            log.debug("Exception details", cause);
+        // 根据异常类型进行不同处理
+        if (cause instanceof java.nio.channels.ClosedChannelException) {
+            if (log.isDebugEnabled())
+                log.debug("Channel closed: {}", cause.getMessage());
+        } else if (cause instanceof java.net.ConnectException) {
+            log.warn("Connection failed: {}", cause.getMessage());
+            sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
+        } else if (cause instanceof java.util.concurrent.TimeoutException) {
+            log.warn("Request timeout: {}", cause.getMessage());
+            sendError(ctx, HttpResponseStatus.GATEWAY_TIMEOUT);
+        } else {
+            log.error("Unexpected exception in frontend handler: {}", cause.getMessage());
+            if (log.isDebugEnabled())
+                log.debug("Stack trace:", cause);
+            sendError(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR);
         }
 
         closeOnFlush(ctx.channel());
@@ -407,11 +468,24 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
         if (outboundChannel != null) {
-            // 检查是否是连接池连接
-            if (!(outboundChannel.pipeline().get("backend-handler") instanceof PooledHttpProxyBackendHandler)) {
-                // 连接池连接会由PooledHttpProxyBackendHandler处理
-                // 这里是处理 直接连接，需要手动关闭
-                closeOnFlush(outboundChannel);
+            try {
+                // 检查是否是连接池连接
+                ChannelHandler backendHandler = outboundChannel.pipeline().get("backend-handler");
+                if (backendHandler instanceof PooledHttpProxyBackendHandler) {
+                    // 连接池连接会由PooledHttpProxyBackendHandler处理
+                    log.debug("Outbound channel will be handled by pool");
+                } else {
+                    // 直接连接需要手动关闭
+                    closeOnFlush(outboundChannel);
+                }
+            } catch (Exception e) {
+                log.warn("Error during channel cleanup", e);
+                // 确保连接被关闭
+                if (outboundChannel.isActive()) {
+                    outboundChannel.close();
+                }
+            } finally {
+                outboundChannel = null;
             }
         }
     }
@@ -423,5 +497,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
     }
 
 }
+
+
 
 

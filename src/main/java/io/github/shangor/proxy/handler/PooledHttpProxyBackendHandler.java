@@ -13,6 +13,7 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
     private final Channel inboundChannel;
     private final ChannelPool channelPool;
     private final Channel outboundChannel;
+    private volatile boolean connectionReleased = false;
 
     public PooledHttpProxyBackendHandler(Channel inboundChannel, ChannelPool channelPool, Channel outboundChannel) {
         this.inboundChannel = inboundChannel;
@@ -47,15 +48,29 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
         releaseConnection();
         HttpProxyFrontendHandler.closeOnFlush(inboundChannel);
     }
-    
+
     private void releaseConnection() {
-        if (channelPool != null && outboundChannel != null) {
+        if (!connectionReleased && channelPool != null && outboundChannel != null) {
+            connectionReleased = true;
+            // 添加调试信息
+            if (logger.isDebugEnabled()) {
+                logger.debug("Attempting to release channel {} to pool {}", 
+                    outboundChannel.id(), channelPool.toString());
+            }
+            
             Future<Void> releaseFuture = channelPool.release(outboundChannel);
             releaseFuture.addListener(future -> {
                 if (future.isSuccess()) {
                     logger.debug("Successfully released connection back to pool");
                 } else {
-                    logger.warn("Failed to release connection back to pool", future.cause());
+                    // 更详细的错误信息
+                    logger.warn("Failed to release connection back to pool: {}. Channel: {}, Pool: {}", 
+                        future.cause().getMessage(), outboundChannel.id(), channelPool.toString());
+                    // 如果连接池释放失败，直接关闭连接
+                    if (outboundChannel.isActive()) {
+                        logger.debug("Closing channel directly due to pool release failure");
+                        outboundChannel.close();
+                    }
                 }
             });
         }
