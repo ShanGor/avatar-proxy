@@ -59,7 +59,7 @@ export http_proxy=$https_proxy
 ### VM Option Parameters
 ```
 -DavatarProxy.port=3128
--DavatarProxy.connectTimeoutMillis=10000
+-DavatarProxy.connectTimeoutMillis=5000
 -DavatarProxy.basicAuth=user1:pass1,user2:pass2
 -DavatarProxy.relay=example.com->127.0.0.1:8080,example.com->http://user:pass@127.0.0.1:8080
 ```

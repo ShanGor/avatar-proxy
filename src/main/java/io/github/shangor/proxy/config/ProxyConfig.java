@@ -1,5 +1,7 @@
 package io.github.shangor.proxy.config;
 
+import io.github.shangor.proxy.util.ConnectionPool;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -14,7 +16,10 @@ public class ProxyConfig {
 
     public ProxyConfig() {
         this.port = Integer.parseInt(System.getProperty("avatarProxy.port", "3128"));
-        this.connectTimeoutMillis = Integer.parseInt(System.getProperty("avatarProxy.connectTimeoutMillis", "10000"));
+        this.connectTimeoutMillis = Integer.parseInt(System.getProperty("avatarProxy.connectTimeoutMillis", "5000"));
+        ConnectionPool.setConnectTimeoutMs(this.connectTimeoutMillis);
+        ConnectionPool.setMaxConnectionsPerHost(Integer.parseInt(System.getProperty("avatarProxy.maxConnectionsPerHost", "10")));
+        ConnectionPool.setIdleTimeoutSeconds(Integer.parseInt(System.getProperty("avatarProxy.idleTimeoutSeconds", "60")));
         var basicAuths = System.getProperty("avatarProxy.basicAuth", null);
         if (basicAuths != null) {
             for (var basicAuth : basicAuths.split(",")) {
