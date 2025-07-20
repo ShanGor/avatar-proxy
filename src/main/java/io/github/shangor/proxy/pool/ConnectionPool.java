@@ -27,9 +27,9 @@ public class ConnectionPool {
     private static final Map<String, AtomicInteger> totalConnections = new ConcurrentHashMap<>();
 
     // 连接池配置
-    private static int MAX_CONNECTIONS_PER_HOST = 200; // 增加到200
+    private static int MAX_CONNECTIONS_PER_HOST = 100; // 增加到200
     private static int CONNECT_TIMEOUT_MS = 5000;
-    private static int IDLE_TIMEOUT_SECONDS = 300; // 增加到5分钟
+    private static int IDLE_TIMEOUT_SECONDS = 60;
     private static double POOL_EXHAUSTION_THRESHOLD = 0.9; // 90%使用率阈值
 
     public static FixedChannelPool getPool(EventLoopGroup group, String host, int port, int connectTimeoutMs) {
