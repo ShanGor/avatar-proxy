@@ -8,6 +8,10 @@ A proxy server implemented by Java, which can be used to proxy HTTP requests.
 - Relay proxy server, support HTTP Basic Authentication
 - Connection pool to same target servers, reuse connection as much as possible.
 
+## Versions
+- v1.1.0: Introduced connection pool. It can reduce the number of connections to the same target server.
+- v1.0.1: For each request, there is one separate connection.
+
 ## Requirements
 - Java 17+
 

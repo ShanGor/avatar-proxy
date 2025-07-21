@@ -2,11 +2,8 @@ package io.github.shangor.proxy.handler;
 
 import io.github.shangor.proxy.config.ProxyConfig;
 import io.github.shangor.proxy.config.ProxyConfig.RelayProxyConfig;
-import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -174,6 +171,29 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
         }
     }
 
+    private void relaySwitchToTransparentProxyMode(ChannelHandlerContext ctx, ChannelPool pool) {
+        ChannelPipeline clientPipeline = ctx.pipeline();
+        clientPipeline.remove(HttpServerCodec.class);
+        clientPipeline.remove(HttpObjectAggregator.class);
+        clientPipeline.remove(HttpProxyFrontendHandler.class);
+        clientPipeline.addLast(new PooledRelayHandler(outboundChannel, pool, outboundChannel));
+    }
+
+    private ChannelPipeline clearedCommonRelayHandlersPipeline() {
+        ChannelPipeline outboundPipeline = outboundChannel.pipeline();
+        // 移除ConnectionPool创建的HTTP处理器
+        if (outboundPipeline.get("idle-handler") != null) {
+            outboundPipeline.remove("idle-handler");
+        }
+        if (outboundPipeline.get("http-codec") != null) {
+            outboundPipeline.remove("http-codec");
+        }
+        if (outboundPipeline.get("http-aggregator") != null) {
+            outboundPipeline.remove("http-aggregator");
+        }
+        return outboundPipeline;
+    }
+
     private void connectToTargetForHttps(ChannelHandlerContext ctx, FullHttpRequest request, String host, int port) {
         // 使用固定的EventLoopGroup获取连接池，确保连接池实例一致
         EventLoopGroup eventLoopGroup = ctx.channel().eventLoop().parent();
@@ -184,7 +204,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             if (f.isSuccess()) {
                 Channel outboundChannel = f.getNow();
                 this.outboundChannel = outboundChannel;
-    
+
                 // 发送200 Connection Established响应
                 FullHttpResponse response = new DefaultFullHttpResponse(
                         HttpVersion.HTTP_1_1, new HttpResponseStatus(200, "Connection Established"));
@@ -192,24 +212,10 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                 ctx.writeAndFlush(response).addListener((ChannelFutureListener) channelFuture -> {
                     if (channelFuture.isSuccess()) {
                         // 切换到透明代理模式
-                        ChannelPipeline clientPipeline = ctx.pipeline();
-                        clientPipeline.remove(HttpServerCodec.class);
-                        clientPipeline.remove(HttpObjectAggregator.class);
-                        clientPipeline.remove(HttpProxyFrontendHandler.class);
-                        clientPipeline.addLast(new PooledRelayHandler(outboundChannel, pool, outboundChannel));
+                        relaySwitchToTransparentProxyMode(ctx, pool);
 
                         // 清理服务端pipeline - 使用正确的处理器名称
-                        ChannelPipeline serverPipeline = outboundChannel.pipeline();
-                        // 移除ConnectionPool创建的HTTP处理器
-                        if (serverPipeline.get("idle-handler") != null) {
-                            serverPipeline.remove("idle-handler");
-                        }
-                        if (serverPipeline.get("http-codec") != null) {
-                            serverPipeline.remove("http-codec");
-                        }
-                        if (serverPipeline.get("http-aggregator") != null) {
-                            serverPipeline.remove("http-aggregator");
-                        }
+                        ChannelPipeline serverPipeline = clearedCommonRelayHandlersPipeline();
                         // 添加反向RelayHandler
                         serverPipeline.addLast(new RelayHandler(ctx.channel()));
                     } else {
@@ -262,28 +268,16 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                             ctx.writeAndFlush(response).addListener((ChannelFutureListener) clientFuture -> {
                                 if (clientFuture.isSuccess()) {
                                     // Switch to transparent proxy mode
-                                    ChannelPipeline clientPipeline = ctx.pipeline();
-                                    clientPipeline.remove(HttpServerCodec.class);
-                                    clientPipeline.remove(HttpObjectAggregator.class);
-                                    clientPipeline.remove(HttpProxyFrontendHandler.class);
-                                    clientPipeline.addLast(new PooledRelayHandler(outboundChannel, pool, outboundChannel));
+                                    relaySwitchToTransparentProxyMode(ctx, pool);
 
                                     // 清理outbound channel的pipeline
-                                    ChannelPipeline outboundPipeline = outboundChannel.pipeline();
+                                    ChannelPipeline outboundPipeline = clearedCommonRelayHandlersPipeline();
+
                                     // 移除我们刚添加的处理器
                                     if (outboundPipeline.get("proxy-connect-handler") != null) {
                                         outboundPipeline.remove("proxy-connect-handler");
                                     }
-                                    // 移除ConnectionPool创建的HTTP处理器
-                                    if (outboundPipeline.get("idle-handler") != null) {
-                                        outboundPipeline.remove("idle-handler");
-                                    }
-                                    if (outboundPipeline.get("http-codec") != null) {
-                                        outboundPipeline.remove("http-codec");
-                                    }
-                                    if (outboundPipeline.get("http-aggregator") != null) {
-                                        outboundPipeline.remove("http-aggregator");
-                                    }
+
                                     // 添加反向RelayHandler
                                     outboundPipeline.addLast(new RelayHandler(ctx.channel()));
                                 } else {
@@ -325,17 +319,17 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
         // 使用固定的EventLoopGroup获取连接池，确保连接池实例一致
         EventLoopGroup eventLoopGroup = ctx.channel().eventLoop().parent();
         ChannelPool pool = ConnectionPool.getPool(eventLoopGroup, host, port, config.getConnectTimeoutMillis());
-    
+
         Future<Channel> future = pool.acquire();
         future.addListener((Future<Channel> f) -> {
             if (f.isSuccess()) {
                 Channel outboundChannel = f.getNow();
                 this.outboundChannel = outboundChannel;
-    
+
                 // 添加后端处理器 - 确保传递正确的连接池实例
                 ChannelPipeline pipeline = outboundChannel.pipeline();
                 pipeline.addLast("backend-handler", new PooledHttpProxyBackendHandler(ctx.channel(), pool, outboundChannel));
-    
+
                 // 发送请求
                 outboundChannel.writeAndFlush(request).addListener((ChannelFutureListener) sendFuture -> {
                     if (!sendFuture.isSuccess()) {
@@ -363,16 +357,16 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
         // 使用固定的EventLoopGroup获取连接池，确保连接池实例一致
         EventLoopGroup eventLoopGroup = ctx.channel().eventLoop().parent();
         ChannelPool pool = ConnectionPool.getPool(eventLoopGroup, relayConfig.host(), relayConfig.port(), config.getConnectTimeoutMillis());
-    
+
         Future<Channel> future = pool.acquire();
         future.addListener((Future<Channel> f) -> {
             if (f.isSuccess()) {
                 Channel outboundChannel = f.getNow();
                 this.outboundChannel = outboundChannel;
-    
+
                 // 修改请求头
                 request.headers().set(HttpHeaderNames.HOST, targetHost + ":" + targetPort);
-    
+
                 // 添加Basic Auth if configured
                 if (relayConfig.hasAuth()) {
                     String authString = relayConfig.username() + ":" + relayConfig.password();
@@ -381,11 +375,11 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
                     if (log.isDebugEnabled())
                         log.debug("Added Basic Auth for relay proxy");
                 }
-    
+
                 // 添加后端处理器 - 确保传递正确的连接池实例
                 ChannelPipeline pipeline = outboundChannel.pipeline();
                 pipeline.addLast("backend-handler", new PooledHttpProxyBackendHandler(ctx.channel(), pool, outboundChannel));
-    
+
                 // 发送请求
                 outboundChannel.writeAndFlush(request).addListener((ChannelFutureListener) sendFuture -> {
                     if (!sendFuture.isSuccess()) {
@@ -414,24 +408,6 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
         return exhausted;
     }
 
-    private boolean isConnectionPoolExhausted() {
-        return ConnectionPool.isAnyPoolExhausted();
-    }
-
-    private Bootstrap createBootstrap(ChannelHandlerContext ctx, ChannelHandler ... handlers) {
-        Bootstrap b = new Bootstrap();
-        b.group(ctx.channel().eventLoop())
-                .channel(NioSocketChannel.class)
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, config.getConnectTimeoutMillis())
-                .option(ChannelOption.SO_KEEPALIVE, true)
-                .handler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) {
-                        ch.pipeline().addLast(handlers);
-                    }
-                });
-        return b;
-    }
 
     private void sendError(ChannelHandlerContext ctx, HttpResponseStatus status) {
         FullHttpResponse response = new DefaultFullHttpResponse(
