@@ -31,7 +31,10 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
         if (relayChannel.isActive()) {
             relayChannel.writeAndFlush(msg).addListener((ChannelFutureListener) future -> {
                 if (!future.isSuccess()) {
-                    log.error("Failed to forward data", future.cause());
+                    log.error("Failed to forward data: {}", future.cause().getMessage());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Exception details", future.cause());
+                    }
                     releaseConnection();
                     ctx.channel().close();
                 }
@@ -56,7 +59,10 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        log.error("Exception in pooled relay handler", cause);
+        log.error("Exception in pooled relay handler: {}", cause.getMessage());
+        if (log.isDebugEnabled()) {
+            log.debug("Exception details", cause);
+        }
         releaseConnection();
         ctx.channel().close();
     }
@@ -67,7 +73,8 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
             Future<Void> releaseFuture = channelPool.release(outboundChannel);
             releaseFuture.addListener(future -> {
                 if (future.isSuccess()) {
-                    log.debug("Successfully released HTTPS connection back to pool");
+                    if (log.isDebugEnabled())
+                        log.debug("Successfully released HTTPS connection back to pool");
                 } else {
                     log.warn("Failed to release HTTPS connection back to pool: {}", future.cause().getMessage());
                 }
