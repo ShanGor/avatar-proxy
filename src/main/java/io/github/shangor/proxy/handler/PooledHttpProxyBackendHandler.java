@@ -52,7 +52,8 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        logger.debug("Backend channel inactive, remote address: {}", ctx.channel().remoteAddress());
+        if (logger.isDebugEnabled())
+            logger.debug("Backend channel inactive, remote address: {}", ctx.channel().remoteAddress());
         releaseConnection();
         // 只有当客户端连接仍然活跃时才尝试刷新并关闭
         if (inboundChannel.isActive()) {
@@ -67,8 +68,8 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
      */
     private boolean isRemoteServerException(Throwable cause) {
         // 远程服务器关闭连接通常会抛出这些异常
-        return cause instanceof java.io.IOException && 
-               (cause.getMessage().contains("Connection reset by peer") || 
+        return cause instanceof java.io.IOException &&
+               (cause.getMessage().contains("Connection reset by peer") ||
                 cause.getMessage().contains("Broken pipe") ||
                 cause instanceof java.net.ConnectException);
     }
@@ -78,21 +79,23 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
             connectionReleased = true;
             // 添加调试信息
             if (logger.isDebugEnabled()) {
-                logger.debug("Attempting to release channel {} to pool {}", 
+                logger.debug("Attempting to release channel {} to pool {}",
                     outboundChannel.id(), channelPool.toString());
             }
-            
+
             Future<Void> releaseFuture = channelPool.release(outboundChannel);
             releaseFuture.addListener(future -> {
                 if (future.isSuccess()) {
-                    logger.debug("Successfully released connection back to pool");
+                    if (logger.isDebugEnabled())
+                        logger.debug("Successfully released connection back to pool");
                 } else {
                     // 更详细的错误信息
-                    logger.warn("Failed to release connection back to pool: {}. Channel: {}, Pool: {}", 
+                    logger.warn("Failed to release connection back to pool: {}. Channel: {}, Pool: {}",
                         future.cause().getMessage(), outboundChannel.id(), channelPool.toString());
                     // 如果连接池释放失败，直接关闭连接
                     if (outboundChannel.isActive()) {
-                        logger.debug("Closing channel directly due to pool release failure");
+                        if (logger.isDebugEnabled())
+                            logger.debug("Closing channel directly due to pool release failure");
                         outboundChannel.close();
                     }
                 }
