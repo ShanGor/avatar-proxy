@@ -51,7 +51,10 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
+        if (log.isDebugEnabled())
+            log.debug("Relay channel inactive, remote address: {}", ctx.channel().remoteAddress());
         releaseConnection();
+        // 只有当relayChannel仍然活跃时才尝试刷新并关闭
         if (relayChannel.isActive()) {
             HttpProxyFrontendHandler.closeOnFlush(relayChannel);
         }
@@ -59,12 +62,32 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        log.error("Exception in pooled relay handler: {}", cause.getMessage());
-        if (log.isDebugEnabled()) {
-            log.debug("Exception details", cause);
+        // 区分客户端和远程服务器异常
+        if (isRemoteServerException(cause)) {
+            log.warn("Remote server exception: {}", cause.getMessage());
+            // 远程服务器关闭连接，释放连接并记录
+            releaseConnection();
+        } else {
+            log.error("Exception in pooled relay handler: {}", cause.getMessage());
+            if (log.isDebugEnabled()) {
+                log.debug("Exception details", cause);
+            }
+            releaseConnection();
         }
-        releaseConnection();
         ctx.channel().close();
+    }
+
+    /**
+     * 判断是否为远程服务器异常
+     * @param cause 异常
+     * @return true 如果是远程服务器关闭连接，false 如果是其他异常
+     */
+    private boolean isRemoteServerException(Throwable cause) {
+        // 远程服务器关闭连接通常会抛出这些异常
+        return cause instanceof java.io.IOException &&
+               (cause.getMessage().contains("Connection reset by peer") ||
+                cause.getMessage().contains("Broken pipe") ||
+                cause instanceof java.net.ConnectException);
     }
 
     private void releaseConnection() {

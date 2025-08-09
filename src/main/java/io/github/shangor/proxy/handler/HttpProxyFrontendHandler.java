@@ -424,18 +424,23 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
         // 根据异常类型进行不同处理
         if (cause instanceof java.nio.channels.ClosedChannelException) {
             if (log.isDebugEnabled())
-                log.debug("Channel closed: {}", cause.getMessage());
+                log.debug("Client closed connection: {}", cause.getMessage());
+            // 客户端关闭连接，忽略并清理资源
+            cleanupOutboundChannel();
         } else if (cause instanceof java.net.ConnectException) {
             log.warn("Connection failed: {}", cause.getMessage());
             sendError(ctx, HttpResponseStatus.BAD_GATEWAY);
+            cleanupOutboundChannel();
         } else if (cause instanceof java.util.concurrent.TimeoutException) {
             log.warn("Request timeout: {}", cause.getMessage());
             sendError(ctx, HttpResponseStatus.GATEWAY_TIMEOUT);
+            cleanupOutboundChannel();
         } else {
             log.error("Unexpected exception in frontend handler: {}", cause.getMessage());
             if (log.isDebugEnabled())
                 log.debug("Stack trace:", cause);
             sendError(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+            cleanupOutboundChannel();
         }
 
         closeOnFlush(ctx.channel());
@@ -443,13 +448,27 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
+        if (log.isDebugEnabled()) {
+            log.debug("Frontend channel inactive, client address: {}", ctx.channel().remoteAddress());
+        }
+        cleanupOutboundChannel();
+    }
+
+    /**
+     * 清理出站连接
+     */
+    private void cleanupOutboundChannel() {
         if (outboundChannel != null) {
             try {
                 // 检查是否是连接池连接
                 ChannelHandler backendHandler = outboundChannel.pipeline().get("backend-handler");
-                if (backendHandler instanceof PooledHttpProxyBackendHandler) {
-                    // 连接池连接会由PooledHttpProxyBackendHandler处理
-                    log.debug("Outbound channel will be handled by pool");
+                
+                if (backendHandler instanceof PooledHttpProxyBackendHandler || 
+                    outboundChannel.pipeline().get("proxy-connect-handler") != null) {
+                    // 连接池连接会由相应的处理器处理
+                    if (log.isDebugEnabled()) {
+                        log.debug("Outbound channel will be handled by pool");
+                    }
                 } else {
                     // 直接连接需要手动关闭
                     closeOnFlush(outboundChannel);
@@ -457,7 +476,7 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             } catch (Exception e) {
                 log.warn("Error during channel cleanup", e);
                 // 确保连接被关闭
-                if (outboundChannel.isActive()) {
+                if (outboundChannel != null && outboundChannel.isActive()) {
                     outboundChannel.close();
                 }
             } finally {
@@ -471,9 +490,4 @@ public class HttpProxyFrontendHandler extends SimpleChannelInboundHandler<FullHt
             ch.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
         }
     }
-
 }
-
-
-
-
