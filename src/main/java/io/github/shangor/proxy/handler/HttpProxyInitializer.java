@@ -21,7 +21,7 @@ public class HttpProxyInitializer extends ChannelInitializer<SocketChannel> {
             new HttpObjectAggregator(65536)
         );
         
-        // 添加认证处理器（如果启用）
+        // Add authentication handler (if enabled)
         if (config.getAuthConfig().isAuthEnabled()) {
             ch.pipeline().addLast(new BasicAuthHandler(config.getAuthConfig()));
         }

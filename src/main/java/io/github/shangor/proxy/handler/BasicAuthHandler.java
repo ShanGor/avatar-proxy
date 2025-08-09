@@ -27,20 +27,20 @@ public class BasicAuthHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        // 如果认证未启用，直接放行
+        // If authentication is not enabled, pass through directly
         if (!authConfig.isAuthEnabled()) {
             ctx.fireChannelRead(msg);
             return;
         }
 
-        // 获取Authorization头
+        // Get Authorization header
         String authHeader = request.headers().get(HttpHeaderNames.PROXY_AUTHORIZATION);
         if (authHeader == null) {
             authHeader = request.headers().get(HttpHeaderNames.AUTHORIZATION);
         }
 
         if (authHeader != null && authHeader.startsWith("Basic ")) {
-            // 解析Basic Auth凭证
+            // Parse Basic Auth credentials
             String base64Credentials = authHeader.substring("Basic ".length());
             String credentials = new String(Base64.getDecoder().decode(base64Credentials), StandardCharsets.UTF_8);
             final String[] values = credentials.split(":", 2);
@@ -48,7 +48,7 @@ public class BasicAuthHandler extends ChannelInboundHandlerAdapter {
                 String username = values[0];
                 String password = values[1];
 
-                // 验证凭证
+                // Verify credentials
                 if (authConfig.authenticate(username, password)) {
                     if (log.isDebugEnabled())
                         log.debug("Authentication successful for user: {}", username);
@@ -58,7 +58,7 @@ public class BasicAuthHandler extends ChannelInboundHandlerAdapter {
             }
         }
 
-        // 认证失败，返回407响应
+        // Authentication failed, return 407 response
         log.warn("Authentication failed");
         FullHttpResponse response = new DefaultFullHttpResponse(
                 HttpVersion.HTTP_1_1,

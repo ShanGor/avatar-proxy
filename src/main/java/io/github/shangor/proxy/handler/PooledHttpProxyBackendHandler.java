@@ -30,7 +30,7 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
                 releaseConnection();
                 HttpProxyFrontendHandler.closeOnFlush(ctx.channel());
             } else {
-                // 响应发送成功，释放连接回池
+                // Response sent successfully, release connection back to pool
                 releaseConnection();
             }
         });
@@ -38,10 +38,10 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        // 区分客户端和远程服务器异常
+        // Distinguish between client and remote server exceptions
         if (isRemoteServerException(cause)) {
             logger.warn("Remote server exception: {}", cause.getMessage());
-            // 远程服务器关闭连接，释放连接并记录
+            // Remote server closed connection, release connection and log
             releaseConnection();
         } else {
             logger.error("Backend handler exception", cause);
@@ -55,19 +55,20 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
         if (logger.isDebugEnabled())
             logger.debug("Backend channel inactive, remote address: {}", ctx.channel().remoteAddress());
         releaseConnection();
-        // 只有当客户端连接仍然活跃时才尝试刷新并关闭
+        // Only try to flush and close if the inbound channel is still active
         if (inboundChannel.isActive()) {
             HttpProxyFrontendHandler.closeOnFlush(inboundChannel);
         }
     }
 
     /**
-     * 判断是否为远程服务器异常
-     * @param cause 异常
-     * @return true 如果是远程服务器关闭连接，false 如果是其他异常
+     * Determine if it is a remote server exception
+     * @param cause Exception
+     * @return true if it is a remote server closing connection, false for other exceptions
+     * @return true if it is a remote server closing connection, false if it is another exception
      */
     private boolean isRemoteServerException(Throwable cause) {
-        // 远程服务器关闭连接通常会抛出这些异常
+        // Remote server closing connection usually throws these exceptions
         return cause instanceof java.io.IOException &&
                (cause.getMessage().contains("Connection reset by peer") ||
                 cause.getMessage().contains("Broken pipe") ||
@@ -77,7 +78,7 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
     private void releaseConnection() {
         if (!connectionReleased && channelPool != null && outboundChannel != null) {
             connectionReleased = true;
-            // 添加调试信息
+            // Add debug information
             if (logger.isDebugEnabled()) {
                 logger.debug("Attempting to release channel {} to pool {}",
                     outboundChannel.id(), channelPool.toString());
@@ -89,10 +90,10 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
                     if (logger.isDebugEnabled())
                         logger.debug("Successfully released connection back to pool");
                 } else {
-                    // 更详细的错误信息
+                    // More detailed error message
                     logger.warn("Failed to release connection back to pool: {}. Channel: {}, Pool: {}",
                         future.cause().getMessage(), outboundChannel.id(), channelPool.toString());
-                    // 如果连接池释放失败，直接关闭连接
+                    // If connection pool release fails, close the connection directly
                     if (outboundChannel.isActive()) {
                         if (logger.isDebugEnabled())
                             logger.debug("Closing channel directly due to pool release failure");

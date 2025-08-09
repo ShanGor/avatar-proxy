@@ -26,18 +26,18 @@ public class ConnectionPool {
     private static final Map<String, AtomicInteger> activeConnections = new ConcurrentHashMap<>();
     private static final Map<String, AtomicInteger> totalConnections = new ConcurrentHashMap<>();
 
-    // 连接池配置 - 优化性能
-    private static int MAX_CONNECTIONS_PER_HOST = 100; // 增加连接数
-    private static int CONNECT_TIMEOUT_MS = 3000; // 减少连接超时
-    private static int IDLE_TIMEOUT_SECONDS = 30; // 减少空闲超时
-    private static int MAX_CONNECTION_LIFE_TIME_SECONDS = 120; // 连接最大生命周期(秒)，0表示无限制
-    private static double POOL_EXHAUSTION_THRESHOLD = 0.8; // 降低阈值，更早触发背压
+    // Connection pool configuration - performance optimization
+    private static int MAX_CONNECTIONS_PER_HOST = 100; // Increase number of connections
+    private static int CONNECT_TIMEOUT_MS = 3000; // Reduce connection timeout
+    private static int IDLE_TIMEOUT_SECONDS = 30; // Reduce idle timeout
+    private static int MAX_CONNECTION_LIFE_TIME_SECONDS = 0; // Maximum connection lifetime (seconds), 0 means no limit
+    private static double POOL_EXHAUSTION_THRESHOLD = 0.8; // Lower threshold, trigger backpressure earlier
 
     public static FixedChannelPool getPool(EventLoopGroup group, String host, int port, int connectTimeoutMs) {
-        // 将EventLoopGroup的hashCode也加入key，确保不同的EventLoopGroup使用不同的连接池
+        // Include EventLoopGroup's hashCode in the key to ensure different EventLoopGroups use different connection pools
         String key = host + ":" + port + ":" + System.identityHashCode(group);
         return pools.computeIfAbsent(key, k -> {
-            // 初始化计数器时也要使用新的key
+            // Initialize counters with the new key
             activeConnections.putIfAbsent(k, new AtomicInteger(0));
             totalConnections.putIfAbsent(k, new AtomicInteger(0));
 
@@ -56,13 +56,13 @@ public class ConnectionPool {
                     if (log.isDebugEnabled())
                         log.debug("Created new connection to {}:{}, channel: {}, total: {}",
                         host, port, ch.id(), totalConnections.get(k).get());
-                    // 基础pipeline设置
+                    // Basic pipeline setup
                     ChannelPipeline pipeline = ch.pipeline();
                     pipeline.addLast("idle-handler", new IdleStateHandler(0, 0, IDLE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
                     pipeline.addLast("http-codec", new HttpClientCodec());
                     pipeline.addLast("http-aggregator", new HttpObjectAggregator(65536));
 
-                    // 如果设置了最大连接生命周期，则添加定时任务关闭连接
+                    // If maximum connection lifetime is set, add a scheduled task to close the connection
                     if (MAX_CONNECTION_LIFE_TIME_SECONDS > 0) {
                         ch.eventLoop().schedule(() -> {
                             if (ch.isActive()) {
@@ -90,10 +90,10 @@ public class ConnectionPool {
                     if (log.isDebugEnabled())
                         log.debug("Released connection to {}:{}, channel: {}, active: {}/{}",
                         host, port, ch.id(), activeConnections.get(k).get(), totalConnections.get(k).get());
-                    // 清理可能添加的业务处理器，保留基础的HTTP处理器
+                    // Clean up possible business handlers, keep basic HTTP handlers
                     ChannelPipeline pipeline = ch.pipeline();
 
-                    // 移除可能存在的业务处理器
+                    // Remove possible business handlers
                     String[] handlersToRemove = {"backend-handler", "response-handler", "request-handler", "proxy-connect-handler"};
                     for (String handlerName : handlersToRemove) {
                         if (pipeline.get(handlerName) != null) {
@@ -101,7 +101,7 @@ public class ConnectionPool {
                         }
                     }
 
-                    // 确保基础处理器存在
+                    // Ensure basic handlers exist
                     if (pipeline.get("http-codec") == null) {
                         pipeline.addLast("http-codec", new HttpClientCodec());
                     }
@@ -113,14 +113,14 @@ public class ConnectionPool {
         });
     }
 
-    // 重载方法，使用默认超时时间
+    // Overloaded method, use default timeout
     public static FixedChannelPool getPool(EventLoopGroup group, String host, int port) {
         return getPool(group, host, port, CONNECT_TIMEOUT_MS);
     }
 
-    // 检查连接池是否接近耗尽
+    // Check if connection pool is nearly exhausted
     public static boolean isPoolExhausted(String host, int port) {
-        // 需要遍历所有匹配host:port的连接池
+        // Need to iterate through all connection pools matching host:port
         String prefix = host + ":" + port + ":";
         return activeConnections.entrySet().stream()
             .filter(entry -> entry.getKey().startsWith(prefix))
@@ -130,7 +130,7 @@ public class ConnectionPool {
             });
     }
 
-    // 获取连接池统计信息
+    // Get connection pool statistics
     public static String getPoolStats(String host, int port) {
         String prefix = host + ":" + port + ":";
         int totalActive = 0;
@@ -159,7 +159,7 @@ public class ConnectionPool {
             (double) totalActive / (poolCount * MAX_CONNECTIONS_PER_HOST) * 100);
     }
 
-    // 检查所有连接池是否有任何一个接近耗尽
+    // Check if any connection pool is nearly exhausted
     public static boolean isAnyPoolExhausted() {
         return activeConnections.entrySet().stream()
             .anyMatch(entry -> {
@@ -168,7 +168,7 @@ public class ConnectionPool {
             });
     }
 
-    // 清理指定主机的连接池
+    // Clean up connection pool for specified host
     public static void closePool(String host, int port) {
         String prefix = host + ":" + port + ":";
         pools.entrySet().removeIf(entry -> {
@@ -183,7 +183,7 @@ public class ConnectionPool {
         });
     }
 
-    // 清理所有连接池
+    // Clean up all connection pools
     public static void closeAllPools() {
         pools.forEach((key, pool) -> {
             pool.close();
@@ -194,7 +194,7 @@ public class ConnectionPool {
         totalConnections.clear();
     }
 
-    // 增加连接池状态监控
+    // Add connection pool status monitoring
     public static void logPoolStats() {
         if (pools.isEmpty()) {
             log.info("No active connection pools");

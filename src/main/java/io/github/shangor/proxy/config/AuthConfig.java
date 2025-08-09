@@ -28,7 +28,7 @@ public class AuthConfig {
 
     public boolean authenticate(String username, String password) {
         if (!authEnabled) {
-            return true; // 如果认证未启用，总是返回true
+            return true; // If authentication is not enabled, always return true
         }
         
         if (username == null || password == null) {

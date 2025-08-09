@@ -40,7 +40,7 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
                 }
             });
         } else {
-            // 如果relay channel不活跃，释放消息并关闭连接
+            // If relay channel is inactive, release the message and close the connection
             if (msg instanceof io.netty.util.ReferenceCounted rc) {
                 rc.release();
             }
@@ -54,7 +54,7 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
         if (log.isDebugEnabled())
             log.debug("Relay channel inactive, remote address: {}", ctx.channel().remoteAddress());
         releaseConnection();
-        // 只有当relayChannel仍然活跃时才尝试刷新并关闭
+        // Only try to flush and close if the relayChannel is still active
         if (relayChannel.isActive()) {
             HttpProxyFrontendHandler.closeOnFlush(relayChannel);
         }
@@ -62,10 +62,10 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        // 区分客户端和远程服务器异常
+        // Distinguish between client and remote server exceptions
         if (isRemoteServerException(cause)) {
             log.warn("Remote server exception: {}", cause.getMessage());
-            // 远程服务器关闭连接，释放连接并记录
+            // Remote server closed connection, release connection and log
             releaseConnection();
         } else {
             log.error("Exception in pooled relay handler: {}", cause.getMessage());
@@ -78,12 +78,12 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
     }
 
     /**
-     * 判断是否为远程服务器异常
-     * @param cause 异常
-     * @return true 如果是远程服务器关闭连接，false 如果是其他异常
+     * Determine if it is a remote server exception
+     * @param cause Exception
+     * @return true if it is a remote server closing connection, false if it is another exception
      */
     private boolean isRemoteServerException(Throwable cause) {
-        // 远程服务器关闭连接通常会抛出这些异常
+        // Remote server closing connection usually throws these exceptions
         return cause instanceof java.io.IOException &&
                (cause.getMessage().contains("Connection reset by peer") ||
                 cause.getMessage().contains("Broken pipe") ||

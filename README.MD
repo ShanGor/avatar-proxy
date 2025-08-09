@@ -20,21 +20,20 @@ A proxy server implemented by Java, which can be used to proxy HTTP requests.
 ```java
     public static void main(String[] args) {
         try {
-            // 创建代理配置，默认端口为3128
+            // Create config for proxy, with default port as 3128
             ProxyConfig config = new ProxyConfig();
 
-            // 添加接力代理配置
+            // Add relay proxies
             config.addDomainRelay("youtube.com", "127.0.0.1", 4780);
             config.addDomainRelay("google.com", "127.0.0.1", 4781, "username", "password");
 
-            // 添加代理服务器认证凭证
+            // Add credentials for relay proxy server 
             config.addCredential("user1", "pass1");  // 添加第一对凭证
             config.addCredential("user2", "pass2");  // 添加第二对凭证
             
-            // 如果不想启用认证，可以禁用它
+            // disable authentication
             // config.enableAuth(false);
 
-            // 启动代理服务器
             HttpProxyServer server = new HttpProxyServer(config);
             server.start();
         } catch (Exception e) {
