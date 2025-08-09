@@ -9,7 +9,7 @@ A proxy server implemented by Java, which can be used to proxy HTTP requests.
 - Connection pool to same target servers, reuse connection as much as possible.
 
 ## Versions
-- v1.1.2: Improved stale connections handling. Introduced maxConnectionLifeTime.
+- v1.1.2/3: Improved stale connections handling. Introduced maxConnectionLifeTime.
 - v1.1.1: Improved logging performance issue. 
 - v1.1.0: Introduced connection pool. It can reduce the number of connections to the same target server.
 - v1.0.1: For each request, there is one separate connection.
