@@ -40,7 +40,7 @@ public class PooledRelayHandler extends ChannelInboundHandlerAdapter {
                 }
             });
         } else {
-            // If relay channel is inactive, release the message and close the connection
+            // If a relay channel is inactive, release the message and close the connection
             if (msg instanceof io.netty.util.ReferenceCounted rc) {
                 rc.release();
             }

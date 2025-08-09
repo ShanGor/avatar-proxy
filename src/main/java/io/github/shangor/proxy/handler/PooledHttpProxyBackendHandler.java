@@ -65,7 +65,6 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
      * Determine if it is a remote server exception
      * @param cause Exception
      * @return true if it is a remote server closing connection, false for other exceptions
-     * @return true if it is a remote server closing connection, false if it is another exception
      */
     private boolean isRemoteServerException(Throwable cause) {
         // Remote server closing connection usually throws these exceptions
@@ -93,7 +92,7 @@ public class PooledHttpProxyBackendHandler extends SimpleChannelInboundHandler<F
                     // More detailed error message
                     logger.warn("Failed to release connection back to pool: {}. Channel: {}, Pool: {}",
                         future.cause().getMessage(), outboundChannel.id(), channelPool.toString());
-                    // If connection pool release fails, close the connection directly
+                    // If the connection pool release fails, close the connection directly
                     if (outboundChannel.isActive()) {
                         if (logger.isDebugEnabled())
                             logger.debug("Closing channel directly due to pool release failure");

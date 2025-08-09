@@ -27,10 +27,10 @@ public class ConnectionPool {
     private static final Map<String, AtomicInteger> totalConnections = new ConcurrentHashMap<>();
 
     // Connection pool configuration - performance optimization
-    private static int MAX_CONNECTIONS_PER_HOST = 100; // Increase number of connections
-    private static int CONNECT_TIMEOUT_MS = 3000; // Reduce connection timeout
-    private static int IDLE_TIMEOUT_SECONDS = 30; // Reduce idle timeout
-    private static int MAX_CONNECTION_LIFE_TIME_SECONDS = 0; // Maximum connection lifetime (seconds), 0 means no limit
+    private static int MAX_CONNECTIONS_PER_HOST = 100; // Increase the number of connections
+    private static int CONNECT_TIMEOUT_MS = 5000; // Reduce connection timeout
+    private static int IDLE_TIMEOUT_SECONDS = 10; // Reduce idle timeout
+    private static int MAX_CONNECTION_LIFE_TIME_SECONDS = 120; // Maximum connection lifetime (seconds), 0 means no limit
     private static double POOL_EXHAUSTION_THRESHOLD = 0.8; // Lower threshold, trigger backpressure earlier
 
     public static FixedChannelPool getPool(EventLoopGroup group, String host, int port, int connectTimeoutMs) {
@@ -118,7 +118,7 @@ public class ConnectionPool {
         return getPool(group, host, port, CONNECT_TIMEOUT_MS);
     }
 
-    // Check if connection pool is nearly exhausted
+    // Check if the connection pool is nearly exhausted
     public static boolean isPoolExhausted(String host, int port) {
         // Need to iterate through all connection pools matching host:port
         String prefix = host + ":" + port + ":";

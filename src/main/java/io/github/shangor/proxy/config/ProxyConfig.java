@@ -25,8 +25,8 @@ public class ProxyConfig {
         this.connectTimeoutMillis = Integer.parseInt(System.getProperty("avatarProxy.connectTimeoutMillis", "5000"));
         ConnectionPool.setConnectTimeoutMs(this.connectTimeoutMillis);
         ConnectionPool.setMaxConnectionsPerHost(Integer.parseInt(System.getProperty("avatarProxy.maxConnectionsPerHost", "100")));
-        ConnectionPool.setIdleTimeoutSeconds(Integer.parseInt(System.getProperty("avatarProxy.idleTimeoutSeconds", "30")));
-        ConnectionPool.setMaxConnectionLifeTimeSeconds(Integer.parseInt(System.getProperty("avatarProxy.maxConnectionLifeTime", "0"))); // 0 means no limit
+        ConnectionPool.setIdleTimeoutSeconds(Integer.parseInt(System.getProperty("avatarProxy.idleTimeoutSeconds", "10")));
+        ConnectionPool.setMaxConnectionLifeTimeSeconds(Integer.parseInt(System.getProperty("avatarProxy.maxConnectionLifeTime", "120"))); // 0 means no limit
         var basicAuths = System.getProperty("avatarProxy.basicAuth", null);
         if (basicAuths != null) {
             for (var basicAuth : basicAuths.split(",")) {
