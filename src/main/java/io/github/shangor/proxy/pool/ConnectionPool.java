@@ -30,6 +30,7 @@ public class ConnectionPool {
     private static int MAX_CONNECTIONS_PER_HOST = 100; // 增加连接数
     private static int CONNECT_TIMEOUT_MS = 3000; // 减少连接超时
     private static int IDLE_TIMEOUT_SECONDS = 30; // 减少空闲超时
+    private static int MAX_CONNECTION_LIFE_TIME_SECONDS = 120; // 连接最大生命周期(秒)，0表示无限制
     private static double POOL_EXHAUSTION_THRESHOLD = 0.8; // 降低阈值，更早触发背压
 
     public static FixedChannelPool getPool(EventLoopGroup group, String host, int port, int connectTimeoutMs) {
@@ -60,6 +61,19 @@ public class ConnectionPool {
                     pipeline.addLast("idle-handler", new IdleStateHandler(0, 0, IDLE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
                     pipeline.addLast("http-codec", new HttpClientCodec());
                     pipeline.addLast("http-aggregator", new HttpObjectAggregator(65536));
+
+                    // 如果设置了最大连接生命周期，则添加定时任务关闭连接
+                    if (MAX_CONNECTION_LIFE_TIME_SECONDS > 0) {
+                        ch.eventLoop().schedule(() -> {
+                            if (ch.isActive()) {
+                                if (log.isDebugEnabled()) {
+                                    log.debug("Closing connection {} to {}:{} due to max life time reached",
+                                        ch.id(), host, port);
+                                }
+                                ch.close();
+                            }
+                        }, MAX_CONNECTION_LIFE_TIME_SECONDS, TimeUnit.SECONDS);
+                    }
                 }
 
                 @Override
@@ -215,7 +229,15 @@ public class ConnectionPool {
         POOL_EXHAUSTION_THRESHOLD = threshold;
     }
 
+    public static void setMaxConnectionLifeTimeSeconds(int maxConnectionLifeTimeSeconds) {
+        MAX_CONNECTION_LIFE_TIME_SECONDS = maxConnectionLifeTimeSeconds;
+    }
+
     public static int getMaxConnectionsPerHost() {
         return MAX_CONNECTIONS_PER_HOST;
+    }
+
+    public static int getMaxConnectionLifeTimeSeconds() {
+        return MAX_CONNECTION_LIFE_TIME_SECONDS;
     }
 }

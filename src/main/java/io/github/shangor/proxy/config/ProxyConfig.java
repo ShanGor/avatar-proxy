@@ -18,6 +18,7 @@ public class ProxyConfig {
     private final int maxRequestSize;
     private final int maxConcurrentRequests;
     private final boolean enableMetrics;
+    private final int maxConnectionLifeTime; // 连接最大生命周期(秒)
 
     public ProxyConfig() {
         this.port = Integer.parseInt(System.getProperty("avatarProxy.port", "3128"));
@@ -25,6 +26,7 @@ public class ProxyConfig {
         ConnectionPool.setConnectTimeoutMs(this.connectTimeoutMillis);
         ConnectionPool.setMaxConnectionsPerHost(Integer.parseInt(System.getProperty("avatarProxy.maxConnectionsPerHost", "100")));
         ConnectionPool.setIdleTimeoutSeconds(Integer.parseInt(System.getProperty("avatarProxy.idleTimeoutSeconds", "30")));
+        ConnectionPool.setMaxConnectionLifeTimeSeconds(Integer.parseInt(System.getProperty("avatarProxy.maxConnectionLifeTime", "120"))); // 0表示无限制
         var basicAuths = System.getProperty("avatarProxy.basicAuth", null);
         if (basicAuths != null) {
             for (var basicAuth : basicAuths.split(",")) {
@@ -56,6 +58,7 @@ public class ProxyConfig {
         this.maxRequestSize = Integer.parseInt(System.getProperty("avatarProxy.maxRequestSize", "10485760")); // 10MB
         this.maxConcurrentRequests = Integer.parseInt(System.getProperty("avatarProxy.maxConcurrentRequests", "1000"));
         this.enableMetrics = Boolean.parseBoolean(System.getProperty("avatarProxy.enableMetrics", "true"));
+        this.maxConnectionLifeTime = Integer.parseInt(System.getProperty("avatarProxy.maxConnectionLifeTime", "0")); // 0表示无限制
     }
 
     public record RelayProxyConfig(String scheme, String host, int port, String username, String password) {
@@ -123,5 +126,9 @@ public class ProxyConfig {
 
     public void enableAuth(boolean enabled) {
         authConfig.setAuthEnabled(enabled);
+    }
+
+    public int getMaxConnectionLifeTime() {
+        return maxConnectionLifeTime;
     }
 }
