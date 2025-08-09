@@ -2,11 +2,11 @@
 A proxy server implemented by Java, which can be used to proxy HTTP requests.
 
 ## Features
-- Support proxy to HTTP and HTTPS
+- Support proxy for HTTP and HTTPS
 - Support HTTP Basic Authentication
 - Support relay to other proxy servers (Currently only support HTTP)
 - Relay proxy server, support HTTP Basic Authentication
-- Connection pool to same target servers, reuse connection as much as possible.
+- Connection pool to the same target servers, reuse connection as much as possible.
 
 ## Versions
 - v1.1.2/3: Improved stale connections handling. Introduced maxConnectionLifeTime.
